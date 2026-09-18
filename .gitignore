@@ -8,5 +8,6 @@ venv/
 .mypy_cache/
 node_modules/
 frontend/dist/
+frontend/.next/
 .DS_Store
 *.log

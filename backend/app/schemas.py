@@ -14,6 +14,11 @@ class AccountCreate(BaseModel):
     parser_config: dict[str, Any] = Field(default_factory=dict)
 
 
+class AccountUpdate(BaseModel):
+    name: str | None = None
+    parser_config: dict[str, Any] | None = None
+
+
 class AccountRead(BaseModel):
     id: int
     name: str
@@ -61,6 +66,7 @@ class ParsedTransactionPreview(BaseModel):
     currency: str
     amount_cad: float
     description: str
+    merchant: str | None = None
     category: str | None = None
     transaction_type: TransactionType
     dedup_hash: str
@@ -72,6 +78,8 @@ class ImportPreviewResponse(BaseModel):
     filename: str
     account_id: int
     status: ImportStatus
+    headers: list[str] = Field(default_factory=list)
+    parser_config: dict[str, Any] = Field(default_factory=dict)
     transactions: list[ParsedTransactionPreview]
     skipped_duplicates: int
 
@@ -82,6 +90,29 @@ class ImportCommitResponse(BaseModel):
     skipped_duplicates: int
 
 
+class ImportRead(BaseModel):
+    id: int
+    account_id: int
+    filename: str
+    status: ImportStatus
+    row_count: int
+    imported_at: datetime
+    has_raw_csv: bool = False
+
+    model_config = {"from_attributes": True}
+
+
+class CsvDetectResponse(BaseModel):
+    filename: str
+    headers: list[str]
+    sample_rows: list[dict[str, Any]]
+    institution: Institution | None = None
+    account_type: AccountType | None = None
+    parser_config: dict[str, Any]
+    confidence: str
+    notes: str
+
+
 class TransactionRead(BaseModel):
     id: int
     account_id: int
@@ -90,6 +121,7 @@ class TransactionRead(BaseModel):
     currency: str
     amount_cad: float
     description: str
+    merchant: str | None = None
     category: str | None
     transaction_type: TransactionType
 
@@ -99,6 +131,19 @@ class TransactionRead(BaseModel):
 class TransactionUpdate(BaseModel):
     category: str | None = None
     transaction_type: TransactionType | None = None
+
+
+class RecategorizeMerchantRequest(BaseModel):
+    pattern: str
+    category: str
+    save_rule: bool = True
+
+
+class RecategorizeMerchantResponse(BaseModel):
+    pattern: str
+    category: str
+    updated_count: int
+    rule_id: int | None = None
 
 
 class MonthlySummary(BaseModel):
@@ -114,8 +159,24 @@ class CategoryBreakdown(BaseModel):
     count: int
 
 
+class MerchantBreakdown(BaseModel):
+    merchant: str
+    total: float
+    count: int
+
+
 class DashboardResponse(BaseModel):
     monthly: list[MonthlySummary]
     by_category: list[CategoryBreakdown]
+    top_merchants: list[MerchantBreakdown]
     total_income: float
     total_expenses: float
+    total_spent: float
+    total_net: float
+    transaction_count: int
+
+
+class SampleHouseholdResponse(BaseModel):
+    created_accounts: int
+    created_transactions: int
+    already_loaded: bool = False
