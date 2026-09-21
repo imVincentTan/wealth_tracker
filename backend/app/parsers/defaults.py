@@ -33,6 +33,30 @@ DEFAULT_PARSER_CONFIGS: dict[str, dict[str, Any]] = {
         "date_format": "%m/%d/%Y",
         "invert_sign": True,
     },
+    "chase:chequing": {
+        "date_column": "Posting Date",
+        "description_column": "Description",
+        "amount_mode": "signed",
+        "amount_column": "Amount",
+        "type_column": "Details",
+        "date_format": "%m/%d/%Y",
+    },
+    "chase:savings": {
+        "date_column": "Posting Date",
+        "description_column": "Description",
+        "amount_mode": "signed",
+        "amount_column": "Amount",
+        "type_column": "Details",
+        "date_format": "%m/%d/%Y",
+    },
+    "chase:credit_card": {
+        "date_column": "Transaction Date",
+        "description_column": "Description",
+        "amount_mode": "signed",
+        "amount_column": "Amount",
+        "type_column": "Type",
+        "date_format": "%m/%d/%Y",
+    },
 }
 
 
