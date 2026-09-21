@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Account
 from app.parsers.defaults import get_default_parser_config
-from app.schemas import AccountCreate, AccountRead
+from app.schemas import AccountCreate, AccountRead, AccountUpdate
 
 router = APIRouter(prefix="/accounts", tags=["accounts"])
 
@@ -37,4 +37,18 @@ def get_account(account_id: int, db: Session = Depends(get_db)):
     account = db.get(Account, account_id)
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
+    return account
+
+
+@router.patch("/{account_id}", response_model=AccountRead)
+def update_account(account_id: int, payload: AccountUpdate, db: Session = Depends(get_db)):
+    account = db.get(Account, account_id)
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+    if payload.name is not None:
+        account.name = payload.name
+    if payload.parser_config is not None:
+        account.parser_config = payload.parser_config
+    db.commit()
+    db.refresh(account)
     return account

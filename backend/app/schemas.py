@@ -14,6 +14,11 @@ class AccountCreate(BaseModel):
     parser_config: dict[str, Any] = Field(default_factory=dict)
 
 
+class AccountUpdate(BaseModel):
+    name: str | None = None
+    parser_config: dict[str, Any] | None = None
+
+
 class AccountRead(BaseModel):
     id: int
     name: str
@@ -61,6 +66,7 @@ class ParsedTransactionPreview(BaseModel):
     currency: str
     amount_cad: float
     description: str
+    merchant: str | None = None
     category: str | None = None
     transaction_type: TransactionType
     dedup_hash: str
@@ -90,6 +96,7 @@ class TransactionRead(BaseModel):
     currency: str
     amount_cad: float
     description: str
+    merchant: str | None = None
     category: str | None
     transaction_type: TransactionType
 
@@ -99,6 +106,7 @@ class TransactionRead(BaseModel):
 class TransactionUpdate(BaseModel):
     category: str | None = None
     transaction_type: TransactionType | None = None
+    apply_to_merchant: bool = False
 
 
 class MonthlySummary(BaseModel):

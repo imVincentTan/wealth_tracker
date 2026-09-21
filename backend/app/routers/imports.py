@@ -2,7 +2,16 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Account, Category, CategoryRule, Import, ImportStatus, RawImportRow, Transaction
+from app.models import (
+    Account,
+    Category,
+    CategoryRule,
+    Import,
+    ImportStatus,
+    RawImportRow,
+    Transaction,
+    TransactionType,
+)
 from app.schemas import ImportCommitResponse, ImportPreviewResponse, ParsedTransactionPreview
 from app.services.csv_parser import apply_category_rules, parse_csv_rows
 
@@ -19,6 +28,17 @@ def _load_rules(db: Session) -> list[tuple[str, str, bool]]:
     return [(pattern, category_names[cat_id], is_regex) for pattern, is_regex, cat_id in rows]
 
 
+def _typed_category(description: str, amount_type: TransactionType, rules: list[tuple[str, str, bool]]) -> tuple[str, TransactionType]:
+    category = apply_category_rules(description, rules)
+    if category == "Transfer":
+        return category, TransactionType.TRANSFER
+    if category == "Income":
+        return category, TransactionType.INCOME
+    if not category:
+        category = "Income" if amount_type == TransactionType.INCOME else "Other"
+    return category, amount_type
+
+
 @router.post("/preview", response_model=ImportPreviewResponse)
 async def preview_import(
     account_id: int = Form(...),
@@ -30,8 +50,15 @@ async def preview_import(
         raise HTTPException(status_code=404, detail="Account not found")
 
     content = (await file.read()).decode("utf-8-sig")
+    filename = file.filename or "upload.csv"
     try:
-        parsed = parse_csv_rows(content, account.parser_config, account.id, account.currency)
+        parsed = parse_csv_rows(
+            content,
+            account.parser_config or {},
+            account.id,
+            account.currency,
+            filename=filename,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -43,9 +70,10 @@ async def preview_import(
 
     import_row = Import(
         account_id=account_id,
-        filename=file.filename or "upload.csv",
+        filename=filename,
         status=ImportStatus.PREVIEW,
         row_count=len(parsed),
+        raw_csv=content,
     )
     db.add(import_row)
     db.flush()
@@ -53,7 +81,7 @@ async def preview_import(
     previews: list[ParsedTransactionPreview] = []
     skipped = 0
     for item in parsed:
-        category = apply_category_rules(item["description"], rules)
+        category, txn_type = _typed_category(item["description"], item["transaction_type"], rules)
         is_dup = item["dedup_hash"] in existing_hashes
         if is_dup:
             skipped += 1
@@ -64,8 +92,9 @@ async def preview_import(
                 currency=item["currency"],
                 amount_cad=float(item["amount_cad"]),
                 description=item["description"],
+                merchant=item.get("merchant"),
                 category=category,
-                transaction_type=item["transaction_type"],
+                transaction_type=txn_type,
                 dedup_hash=item["dedup_hash"],
                 is_duplicate=is_dup,
             )
@@ -103,21 +132,28 @@ def commit_import(import_id: int, db: Session = Depends(get_db)):
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
 
-    content_rows = import_row.raw_rows
-    if not content_rows:
-        raise HTTPException(status_code=400, detail="Import has no rows")
+    if import_row.raw_csv:
+        parsed = parse_csv_rows(
+            import_row.raw_csv,
+            account.parser_config or {},
+            account.id,
+            account.currency,
+            filename=import_row.filename,
+        )
+    else:
+        content_rows = import_row.raw_rows
+        if not content_rows:
+            raise HTTPException(status_code=400, detail="Import has no rows")
+        import csv
+        import io
 
-    # Re-parse from stored raw rows using current parser config
-    import csv
-    import io
-
-    fieldnames = list(content_rows[0].raw_data.keys())
-    buffer = io.StringIO()
-    writer = csv.DictWriter(buffer, fieldnames=fieldnames)
-    writer.writeheader()
-    for row in sorted(content_rows, key=lambda r: r.row_number):
-        writer.writerow(row.raw_data)
-    parsed = parse_csv_rows(buffer.getvalue(), account.parser_config, account.id, account.currency)
+        fieldnames = list(content_rows[0].raw_data.keys())
+        buffer = io.StringIO()
+        writer = csv.DictWriter(buffer, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in sorted(content_rows, key=lambda r: r.row_number):
+            writer.writerow(row.raw_data)
+        parsed = parse_csv_rows(buffer.getvalue(), account.parser_config or {}, account.id, account.currency)
 
     rules = _load_rules(db)
     existing_hashes = {
@@ -131,7 +167,7 @@ def commit_import(import_id: int, db: Session = Depends(get_db)):
         if item["dedup_hash"] in existing_hashes:
             skipped += 1
             continue
-        category = apply_category_rules(item["description"], rules)
+        category, txn_type = _typed_category(item["description"], item["transaction_type"], rules)
         txn = Transaction(
             account_id=account.id,
             import_id=import_row.id,
@@ -140,8 +176,9 @@ def commit_import(import_id: int, db: Session = Depends(get_db)):
             currency=item["currency"],
             amount_cad=item["amount_cad"],
             description=item["description"],
-            category=category or "Uncategorized",
-            transaction_type=item["transaction_type"],
+            merchant=item.get("merchant"),
+            category=category,
+            transaction_type=txn_type,
             dedup_hash=item["dedup_hash"],
         )
         db.add(txn)

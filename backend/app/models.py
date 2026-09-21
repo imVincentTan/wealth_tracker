@@ -23,6 +23,8 @@ from app.database import Base
 class Institution(str, enum.Enum):
     TD = "td"
     AMEX = "amex"
+    CHASE = "chase"
+    OTHER = "other"
 
 
 class AccountType(str, enum.Enum):
@@ -88,6 +90,7 @@ class Import(Base):
     filename: Mapped[str] = mapped_column(String(255))
     status: Mapped[ImportStatus] = mapped_column(Enum(ImportStatus), default=ImportStatus.PREVIEW)
     row_count: Mapped[int] = mapped_column(default=0)
+    raw_csv: Mapped[str | None] = mapped_column(Text, nullable=True)
     imported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     account: Mapped["Account"] = relationship(back_populates="imports")
@@ -118,6 +121,7 @@ class Transaction(Base):
     currency: Mapped[str] = mapped_column(String(3), default="CAD")
     amount_cad: Mapped[float] = mapped_column(Numeric(14, 2))
     description: Mapped[str] = mapped_column(Text)
+    merchant: Mapped[str | None] = mapped_column(String(120), nullable=True)
     category: Mapped[str | None] = mapped_column(String(80), nullable=True)
     transaction_type: Mapped[TransactionType] = mapped_column(Enum(TransactionType))
     dedup_hash: Mapped[str] = mapped_column(String(64))

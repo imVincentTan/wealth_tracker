@@ -1,57 +1,51 @@
-# wealth_tracker
+# Tally / Wealth Tracker
 
-Personal finance tracker — upload bank and credit card CSV statements, categorize transactions, and view income/expense dashboards.
+Upload bank and credit-card CSVs, store the original rows in Postgres, and get a spending report: totals, categories, monthly trend, merchants.
 
-See [PLAN.md](PLAN.md) for full phased roadmap.
+This is the [wealth_tracker](https://github.com/imVincentTan/wealth_tracker) plan with Tally’s report UI on top.
 
-## Quick start
+## Run it
 
-```powershell
-cd C:\Users\Vincent\repos\wealth_tracker
-copy .env.example .env
+Postgres + API + UI:
+
+```bash
+cp .env.example .env
 docker compose up --build
 ```
 
-- **Frontend:** http://localhost:5173
-- **API:** http://localhost:8000
-- **API docs:** http://localhost:8000/docs
+Then in another terminal:
 
-## Phase 1 workflow
+```bash
+npm install
+NEXT_PUBLIC_API_URL=http://127.0.0.1:8000 npm run dev
+```
 
-1. **Accounts** — create saved accounts (TD chequing, TD CC, Amex CC, etc.)
-2. **Import** — upload CSV, preview parsed rows, commit
-3. **Transactions** — review and edit categories
-4. **Dashboard** — monthly income/expenses and category breakdown (Transfer excluded by default)
+- App: http://127.0.0.1:43127
+- API docs: http://127.0.0.1:8000/docs
 
-## Supported CSV formats (defaults)
+Without Docker, run Postgres yourself, set `DATABASE_URL`, then:
 
-Parser column mappings are stored per account and can be customized later. Defaults target:
-
-| Institution | Type | Expected columns |
-|-------------|------|------------------|
-| TD | Chequing / Savings | Date, Description, Withdrawals, Deposits |
-| TD | Credit card | Transaction Date, Description, Amount |
-| Amex | Credit card | Date, Description, Amount |
-
-If your export differs, update `parser_config` on the account (API) — column mapping UI is planned.
-
-## Dev without Docker
-
-**Backend:**
-
-```powershell
+```bash
 cd backend
 python -m venv .venv
-.\.venv\Scripts\Activate.ps1
+source .venv/bin/activate
 pip install -r requirements.txt
-# Postgres must be running; set DATABASE_URL in .env
-uvicorn app.main:app --reload
+uvicorn app.main:app --reload --port 8000
 ```
 
-**Frontend:**
+## What it stores
 
-```powershell
-cd frontend
-npm install
-npm run dev
-```
+Each import keeps:
+
+- The original CSV text
+- Every raw row as JSON
+- Normalized transactions (date, amount, CAD amount, merchant, category)
+- Per-account parser config (TD chequing vs TD card vs Amex vs Chase)
+
+Re-importing the same statement is deduplicated.
+
+## Import
+
+TD chequing/savings (Withdrawals/Deposits), TD and Amex cards, Chase checking/card, or a generic Date / Description / Amount file. If columns are unusual, map them before commit.
+
+CAD is the reporting currency. Transfers (card payments, Zelle, ATM cash) are stored but excluded from spending totals.
