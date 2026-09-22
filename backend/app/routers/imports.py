@@ -19,9 +19,13 @@ router = APIRouter(prefix="/imports", tags=["imports"])
 
 
 def _load_rules(db: Session) -> list[tuple[str, str, bool]]:
+    # Newest rule wins: user-created rules (from apply-to-merchant or the
+    # rules endpoint) always postdate the seeded defaults, so they override
+    # them when both match a description.
     rows = (
         db.query(CategoryRule.pattern, CategoryRule.is_regex, CategoryRule.category_id)
         .join(CategoryRule.category)
+        .order_by(CategoryRule.id.desc())
         .all()
     )
     category_names = {c.id: c.name for c in db.query(Category).all()}
