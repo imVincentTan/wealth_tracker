@@ -27,5 +27,12 @@ services:
       db:
         condition: service_healthy
 
+  web:
+    build: .
+    ports:
+      - "43127:43127"
+    depends_on:
+      - api
+
 volumes:
   pgdata:
