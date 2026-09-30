@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
@@ -6,6 +8,9 @@ from app.config import settings
 
 def _engine_kwargs(url: str) -> dict:
     if url.startswith("sqlite"):
+        db_path = url.removeprefix("sqlite:///")
+        if db_path != ":memory:":
+            Path(db_path).parent.mkdir(parents=True, exist_ok=True)
         return {"connect_args": {"check_same_thread": False}}
     return {}
 
