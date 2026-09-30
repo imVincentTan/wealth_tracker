@@ -57,3 +57,9 @@ CLAUDE.md
 
 # stale leftover from the removed Vite frontend
 frontend/
+
+# static-export intermediate (committed copy lives in backend/app/static)
+/out/
+
+# local SQLite data for the zero-setup path
+backend/data/
