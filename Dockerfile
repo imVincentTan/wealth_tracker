@@ -1,6 +1,6 @@
 # Next.js UI (Tally). The browser talks to the API at http://127.0.0.1:8000
-# (published by docker compose), and src/lib/api.ts defaults to that URL,
-# so no build-time configuration is needed.
+# (published by docker compose), baked in at build time below. Without it the
+# bundle calls relative /api paths, which only works when FastAPI serves the UI.
 FROM node:22-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
@@ -10,6 +10,8 @@ FROM node:22-alpine AS build
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+ARG NEXT_PUBLIC_API_URL=http://127.0.0.1:8000
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 RUN npm run build
 
 FROM node:22-alpine

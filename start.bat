@@ -1,55 +1,71 @@
 @echo off
-rem Tally / wealth_tracker - one-click start for Windows.
+rem Tally / wealth_tracker - one-click start for Windows. No Docker required.
 rem Double-click this file in Explorer.
 cd /d "%~dp0"
 
 echo == Tally / wealth tracker ==
 echo.
 
-where docker >nul 2>nul
-if errorlevel 1 (
-  echo Docker Desktop is not installed. It is the only prerequisite.
+rem Python is the only prerequisite.
+set PY=
+where py >nul 2>nul && set PY=py
+if not defined PY (
+  where python >nul 2>nul && set PY=python
+)
+if not defined PY (
+  echo Python 3 is not installed. It is the only prerequisite.
   echo.
-  echo   1. Install it from https://www.docker.com/products/docker-desktop/
-  echo   2. Open Docker Desktop once and wait until it says it's running
-  echo   3. Double-click this file again
-  start https://www.docker.com/products/docker-desktop/
+  echo   1. Install it from https://www.python.org/downloads/
+  echo      ^(tick "Add python.exe to PATH" during setup^)
+  echo   2. Double-click this file again
+  start https://www.python.org/downloads/
   echo.
   pause
   exit /b 1
 )
 
-docker info >nul 2>nul
-if errorlevel 1 (
-  echo Starting Docker Desktop ^(this can take a minute^)...
-  start "" "C:\Program Files\Docker\Docker\Docker Desktop.exe"
-  set /a tries=0
-  :waitdocker
-  timeout /t 2 >nul
-  docker info >nul 2>nul
-  if not errorlevel 1 goto dockerup
-  set /a tries+=1
-  if %tries% lss 60 goto waitdocker
-  echo.
-  echo Docker didn't start in time. Open Docker Desktop yourself,
-  echo wait for it to finish starting, then double-click this file again.
-  pause
-  exit /b 1
+rem Backend dependencies in a local virtualenv (created once).
+if not exist backend\.venv\Scripts\python.exe (
+  echo Setting up the Python environment ^(first run only^)...
+  %PY% -m venv backend\.venv
+  if errorlevel 1 (
+    echo Could not create the Python environment.
+    pause
+    exit /b 1
+  )
 )
-:dockerup
+backend\.venv\Scripts\python.exe -m pip install -q -r backend\requirements.txt
 
-if not exist .env copy .env.example .env >nul
+rem The prebuilt UI bundle ships in the repo; rebuild only if it's missing.
+if not exist backend\app\static\index.html (
+  where npm >nul 2>nul
+  if errorlevel 1 (
+    echo The UI bundle ^(backend\app\static^) is missing and Node.js isn't installed to rebuild it.
+    echo Re-download the full repo, or install Node from https://nodejs.org/ and run this again.
+    pause
+    exit /b 1
+  )
+  echo Building the UI ^(first run only^)...
+  call npm ci
+  set TALLY_STATIC_EXPORT=1
+  set NEXT_PUBLIC_API_URL=
+  call npm run build
+  rmdir /s /q backend\app\static
+  xcopy /e /i /q out backend\app\static >nul
+)
 
-rem Open the app in the default browser as soon as the UI answers.
-start "" /min powershell -WindowStyle Hidden -Command "for ($i=0; $i -lt 150; $i++) { try { Invoke-WebRequest -UseBasicParsing http://127.0.0.1:43127 | Out-Null; break } catch { Start-Sleep 2 } }; Start-Process http://127.0.0.1:43127"
+rem Zero-setup database: a SQLite file at backend\data\tally.db. Set explicitly
+rem so a stray .env from the Docker path can't redirect the app at Postgres.
+if not exist backend\data mkdir backend\data
+set DATABASE_URL=sqlite:///%CD%\backend\data\tally.db
 
-echo First run downloads and builds everything - give it a few minutes.
-echo Your browser will open http://127.0.0.1:43127 when the app is ready.
+rem Open the app in the default browser as soon as the server answers.
+start "" /min powershell -WindowStyle Hidden -Command "for ($i=0; $i -lt 30; $i++) { try { Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8000/ | Out-Null; break } catch { Start-Sleep 1 } }; Start-Process http://127.0.0.1:8000"
+
+echo Starting Tally - your browser will open http://127.0.0.1:8000
+echo Keep this window open while using the app. Close the window to stop.
 echo.
-echo Keep this window open while using the app. Close it to stop the app.
-echo.
-
-docker compose up --build
+backend\.venv\Scripts\uvicorn.exe app.main:app --app-dir backend --host 127.0.0.1 --port 8000
 
 echo.
 echo The app has stopped.
