@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Committed prebuilt UI bundle served by FastAPI (minified output):
+    "backend/app/static/**",
   ]),
 ]);
 
