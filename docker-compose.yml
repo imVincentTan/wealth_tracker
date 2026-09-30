@@ -18,7 +18,9 @@ services:
   api:
     build: ./backend
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql://wealth:wealth@db:5432/wealth_tracker}
+      # Always the in-network db hostname. .env's DATABASE_URL points at
+      # 127.0.0.1 (for host-native runs) and must not leak into the container.
+      DATABASE_URL: postgresql://wealth:wealth@db:5432/wealth_tracker
     ports:
       - "8000:8000"
     volumes:
