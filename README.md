@@ -4,8 +4,6 @@ Upload bank and credit-card CSVs, store the original rows in Postgres, and get a
 
 This is the [wealth_tracker](https://github.com/imVincentTan/wealth_tracker) plan with Tally’s report UI on top.
 
-Architecture, product invariants, and verify steps: [docs/project-context.md](docs/project-context.md).
-
 ## Run it
 
 Postgres + API + UI:
