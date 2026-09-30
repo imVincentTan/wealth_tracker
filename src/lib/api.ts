@@ -1,7 +1,10 @@
 import type { AccountKind, CategoryId, ColumnMapping } from "./types";
 
-export const API_URL =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://127.0.0.1:8000";
+// Same-origin by default (single-server bundle: FastAPI serves UI + /api).
+// Set NEXT_PUBLIC_API_URL to the API origin only for the split dev setup
+// (next dev on :43127 talking to uvicorn on :8000).
+const origin = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "");
+export const API_URL = origin ? `${origin}/api` : "/api";
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, options);
