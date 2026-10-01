@@ -1,0 +1,55 @@
+---
+type: Project Context
+title: wealth_tracker / Tally
+description: Architecture, product invariants, and run/verify steps for the Tally report UI on FastAPI + Postgres. Entry point for agents and contributors working on this repo.
+tags: [finance, csv, postgres, fastapi, nextjs]
+timestamp: 2026-09-30T00:00:00Z
+status: active
+---
+
+# Summary
+
+Personal finance tracker. Upload CSV statements from bank and credit card accounts into Postgres; view income, expenses, categories, and cash-flow dashboards in the Next.js "Tally" report UI.
+
+# Architecture
+
+- **Single-server mode (default/tester path)**: one `uvicorn` process serves everything at `http://127.0.0.1:8000` — the prebuilt static UI bundle (`backend/app/static/`, SPA fallback), the API under `/api`, and `/docs`. Storage defaults to SQLite at `backend/data/tally.db` when `DATABASE_URL` is unset.
+- **Frontend**: Next.js app at the repo root (`src/app`, `src/components`, `src/lib`). Key files: `src/lib/api.ts` (backend calls — relative `/api` same-origin by default; `NEXT_PUBLIC_API_URL` origin only for the split dev setup), `src/lib/store.ts` (zustand + import flow), `src/lib/reports.ts` (`buildReport`), `src/components/tally-app.tsx`, `import-dialog.tsx`, `transaction-table.tsx`, charts in `category-chart.tsx` + `trend-chart.tsx`.
+- **Backend**: FastAPI in `backend/app/` — `models.py` (Account, Category, CategoryRule, Import(+`raw_csv`), RawImportRow, Transaction(+`merchant`)), `routers/` (accounts, categories, imports, transactions, dashboard), `services/csv_parser.py` (`parse_csv_rows`, `extract_merchant`, `detect_parser_config`), `services/seed.py` (default categories + rules), `parsers/defaults.py` (TD/Amex/Chase).
+- **DB**: SQLite by default (zero setup); Postgres 16 via `DATABASE_URL` (compose path). Tables are created via `Base.metadata.create_all` on startup — **there are no migrations**; if the schema drifts in a dev environment, recreate the database.
+- **Dev split**: `next dev` on **43127** with `NEXT_PUBLIC_API_URL=http://127.0.0.1:8000` + uvicorn on 8000. Docker compose runs db + api + web (UI on 43127).
+- After changing the UI, regenerate the committed bundle: `NEXT_PUBLIC_API_URL="" TALLY_STATIC_EXPORT=1 npm run build && rm -rf backend/app/static && cp -r out backend/app/static`. The emptied env var keeps API calls same-origin relative (Next reads `.env` at build time).
+
+# Product invariants (preserve these)
+
+- Store the original CSV text (`Import.raw_csv`) and every raw row as JSON (`RawImportRow.raw_data`).
+- Imports are preview-then-commit; re-importing the same statement is deduplicated via `dedup_hash`.
+- Saved accounts carry `parser_config` (institution + account type + column mapping).
+- Parsers: TD chequing/savings (Withdrawals/Deposits), TD card, Amex, Chase, plus a generic Date/Description/Amount detector with column mapping.
+- Transfers (card payments, Zelle, ATM cash) are stored but **excluded** from spending totals.
+- CAD is the reporting currency.
+- Recategorize optionally applies to the merchant (creates a `CategoryRule`). User-created rules must take precedence over seeded defaults — rules are loaded newest-first in `backend/app/routers/imports.py`; keep it that way.
+
+# Run
+
+Tester path (only prerequisite: Python 3.10+): double-click `start.command` (Mac) / `start.bat` (Windows) → app at `http://127.0.0.1:8000`.
+
+```bash
+# manual equivalent
+cd backend && python -m venv .venv && pip install -r requirements.txt
+./.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000   # serves UI + /api + /docs
+```
+
+Docker (Postgres): `cp .env.example .env && docker compose up --build` → UI on :43127, API on :8000.
+
+# Verify
+
+- `npm run test` — ledger/report unit tests
+- `npm run lint` — eslint
+- `npm run build` — production build
+- End-to-end through the API: create account → `/imports/preview` → `/imports/{id}/commit` → re-import (dedup) → `/dashboard` totals. Sample CSVs in `public/samples/` (chase-checking.csv, chase-credit.csv).
+
+# Deferred (Phase 2)
+
+- Investment statements: NBF, Wealthsimple
+- Net worth including investment balances
