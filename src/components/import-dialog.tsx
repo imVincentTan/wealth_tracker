@@ -159,7 +159,7 @@ export function ImportDialog({ open, onOpenChange }: Props) {
             <div>
               <p className="font-medium">Drop a CSV here</p>
               <p className="mt-1 text-sm text-muted-foreground">
-                Chase, Amex, Capital One, Bank of America, and generic Date / Description / Amount files.
+                TD, Chase, Amex, Capital One, Bank of America, and generic Date / Description / Amount files.
               </p>
             </div>
             <span className={cn(buttonVariants({ variant: "outline", size: "sm" }), "pointer-events-none")}>
