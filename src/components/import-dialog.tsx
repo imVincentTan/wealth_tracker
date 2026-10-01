@@ -1,6 +1,5 @@
 "use client";
 
-import type { ReactNode } from "react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -44,6 +43,7 @@ export function ImportDialog({ open, onOpenChange }: Props) {
   const [kind, setKind] = useState<AccountKind>("checking");
   const [invert, setInvert] = useState(false);
   const [mapping, setMapping] = useState<ColumnMapping | null>(null);
+  const [showColumnEditor, setShowColumnEditor] = useState(false);
 
   function reset() {
     setPreview(null);
@@ -53,6 +53,7 @@ export function ImportDialog({ open, onOpenChange }: Props) {
     setKind("checking");
     setInvert(false);
     setMapping(null);
+    setShowColumnEditor(false);
     if (fileRef.current) fileRef.current.value = "";
   }
 
@@ -111,7 +112,7 @@ export function ImportDialog({ open, onOpenChange }: Props) {
         <DialogHeader>
           <DialogTitle>Import a statement</DialogTitle>
           <DialogDescription>
-            CSV from a credit card or checking account. The file is stored in your local Postgres, not on a public server.
+            CSV from a credit card or checking account. The file is stored only on this computer.
           </DialogDescription>
         </DialogHeader>
 
@@ -211,12 +212,18 @@ export function ImportDialog({ open, onOpenChange }: Props) {
               </div>
             </div>
 
-            {preview.confidence === "low" && mapping && (
-              <ColumnMapper
-                headers={preview.headers}
-                mapping={mapping}
-                onChange={setMapping}
-              />
+            {mapping && (preview.confidence === "low" || showColumnEditor) && (
+              <ColumnRoleTable preview={preview} mapping={mapping} onChange={setMapping} />
+            )}
+
+            {preview.confidence !== "low" && (
+              <button
+                type="button"
+                className="text-xs text-primary underline-offset-4 hover:underline"
+                onClick={() => setShowColumnEditor((v) => !v)}
+              >
+                {showColumnEditor ? "Hide column mapping" : "Adjust column mapping"}
+              </button>
             )}
 
             <label className="flex items-start gap-2 text-sm">
@@ -244,7 +251,10 @@ export function ImportDialog({ open, onOpenChange }: Props) {
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button onClick={confirmImport} disabled={!preview}>
+          <Button
+            onClick={confirmImport}
+            disabled={!preview || !mapping || missingPieces(mapping).length > 0}
+          >
             Import transactions
           </Button>
         </DialogFooter>
@@ -253,53 +263,112 @@ export function ImportDialog({ open, onOpenChange }: Props) {
   );
 }
 
-function ColumnMapper({
-  headers,
+const COLUMN_ROLES: { value: keyof ColumnMapping | ""; label: string }[] = [
+  { value: "", label: "Skip" },
+  { value: "date", label: "Date" },
+  { value: "description", label: "Description" },
+  { value: "amount", label: "Amount (signed)" },
+  { value: "debit", label: "Debit / money out" },
+  { value: "credit", label: "Credit / money in" },
+  { value: "category", label: "Bank category" },
+  { value: "type", label: "Type marker" },
+];
+
+function missingPieces(mapping: ColumnMapping): string[] {
+  const missing: string[] = [];
+  if (!mapping.date) missing.push("Date");
+  if (!mapping.description) missing.push("Description");
+  if (!mapping.amount && !mapping.debit && !mapping.credit) missing.push("Amount or Debit/Credit");
+  return missing;
+}
+
+function ColumnRoleTable({
+  preview,
   mapping,
   onChange,
 }: {
-  headers: string[];
+  preview: ImportPreview;
   mapping: ColumnMapping;
   onChange: (mapping: ColumnMapping) => void;
 }) {
-  function bind(key: keyof ColumnMapping) {
-    return (
-      <select
-        value={mapping[key] ?? ""}
-        onChange={(e) => onChange({ ...mapping, [key]: e.target.value || null })}
-        className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm"
-      >
-        <option value="">Not in this file</option>
-        {headers.map((h) => (
-          <option key={h} value={h}>
-            {h}
-          </option>
-        ))}
-      </select>
-    );
+  const roleByHeader = new Map<string, keyof ColumnMapping>();
+  for (const [role, header] of Object.entries(mapping) as [keyof ColumnMapping, string | null][]) {
+    if (header) roleByHeader.set(header, role);
   }
 
-  return (
-    <div className="rounded-xl border bg-muted/30 p-3">
-      <p className="mb-2 text-sm font-medium">Match your columns</p>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Date">{bind("date")}</Field>
-        <Field label="Description">{bind("description")}</Field>
-        <Field label="Amount">{bind("amount")}</Field>
-        <Field label="Debit (optional)">{bind("debit")}</Field>
-        <Field label="Credit (optional)">{bind("credit")}</Field>
-        <Field label="Bank category (optional)">{bind("category")}</Field>
-      </div>
-    </div>
-  );
-}
+  function assign(header: string, role: keyof ColumnMapping | "") {
+    const next = { ...mapping };
+    for (const key of Object.keys(next) as (keyof ColumnMapping)[]) {
+      if (next[key] === header) next[key] = null;
+    }
+    // Roles are unique: assigning one evicts whichever header held it before.
+    if (role) next[role] = header;
+    onChange(next);
+  }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
+  const missing = missingPieces(mapping);
+  const rows = preview.rows.slice(0, 8);
+
   return (
-    <label className="space-y-1.5 text-sm">
-      <span className="text-muted-foreground">{label}</span>
-      {children}
-    </label>
+    <div className="space-y-1.5">
+      <p className="text-sm font-medium">What is each column?</p>
+      <div className="overflow-x-auto rounded-xl border">
+        <table className="w-full text-sm">
+          <thead className="bg-muted/50 text-left">
+            <tr>
+              {preview.headers.map((h) => (
+                <th key={h} className="px-3 py-2 align-top font-medium">
+                  <div className="min-w-32 space-y-1.5">
+                    <div className="max-w-40 truncate text-muted-foreground" title={h}>
+                      {h}
+                    </div>
+                    <select
+                      value={roleByHeader.get(h) ?? ""}
+                      onChange={(e) => assign(h, e.target.value as keyof ColumnMapping | "")}
+                      className={cn(
+                        "h-8 w-full rounded-lg border bg-transparent px-2 text-xs",
+                        roleByHeader.has(h)
+                          ? "border-primary text-foreground"
+                          : "border-input text-muted-foreground"
+                      )}
+                    >
+                      {COLUMN_ROLES.map((r) => (
+                        <option key={r.value} value={r.value}>
+                          {r.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, i) => (
+              <tr key={i} className="border-t">
+                {preview.headers.map((h) => (
+                  <td
+                    key={h}
+                    className="max-w-40 truncate px-3 py-1.5 text-muted-foreground"
+                    title={row[h]}
+                  >
+                    {row[h]?.trim() ? row[h] : "—"}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {preview.rows.length > 8 ? (
+          <p className="border-t px-3 py-2 text-xs text-muted-foreground">
+            Showing 8 of {preview.rows.length} rows.
+          </p>
+        ) : null}
+      </div>
+      {missing.length > 0 ? (
+        <p className="text-xs text-amber-700">Still needed before import: {missing.join(", ")}.</p>
+      ) : null}
+    </div>
   );
 }
 
