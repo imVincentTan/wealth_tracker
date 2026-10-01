@@ -20,6 +20,13 @@ Personal finance tracker. Upload CSV statements from bank and credit card accoun
 - **Dev split**: `next dev` on **43127** with `NEXT_PUBLIC_API_URL=http://127.0.0.1:8000` + uvicorn on 8000. Docker compose runs db + api + web (UI on 43127).
 - After changing the UI, regenerate the committed bundle: `NEXT_PUBLIC_API_URL="" TALLY_STATIC_EXPORT=1 npm run build && rm -rf backend/app/static && cp -r out backend/app/static`. The emptied env var keeps API calls same-origin relative (Next reads `.env` at build time).
 
+# Privacy invariants (the owner's absolute line)
+
+- **All data stays on the user's machine.** SQLite file at `backend/data/tally.db` (gitignored), or local Postgres. No outbound network calls at runtime — the backend has no HTTP client calls and the UI bundle self-hosts fonts and contains no trackers.
+- **Localhost only.** The server binds `127.0.0.1`; compose publishes ports on `127.0.0.1` too. Never bind `0.0.0.0` for user-facing services.
+- **Agents and contributors never see user data.** Work with the synthetic samples in `public/samples/`. Never commit real CSVs or `*.db` files, never paste real transaction contents into agent chats or issues. The data dir and `.env` are gitignored — keep them that way.
+- **Future relaxation, at most**: an agent may be given a *description* of data (e.g. "a TD chequing export with columns X, Y"), never the numbers. Until explicitly enabled, not even that.
+
 # Product invariants (preserve these)
 
 - Store the original CSV text (`Import.raw_csv`) and every raw row as JSON (`RawImportRow.raw_data`).

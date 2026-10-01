@@ -6,7 +6,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-wealth}
       POSTGRES_DB: ${POSTGRES_DB:-wealth_tracker}
     ports:
-      - "5432:5432"
+      # localhost-only: never expose the database to the LAN
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -22,7 +23,7 @@ services:
       # 127.0.0.1 (for host-native runs) and must not leak into the container.
       DATABASE_URL: postgresql://wealth:wealth@db:5432/wealth_tracker
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     volumes:
       - ./backend:/app
     depends_on:
@@ -32,7 +33,7 @@ services:
   web:
     build: .
     ports:
-      - "43127:43127"
+      - "127.0.0.1:43127:43127"
     depends_on:
       - api
 

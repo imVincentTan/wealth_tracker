@@ -29,7 +29,7 @@ backend/.venv/bin/pip install -q -r backend/requirements.txt
 if [ ! -f backend/app/static/index.html ]; then
   if command -v npm >/dev/null 2>&1; then
     echo "Building the UI (first run only)..."
-    npm ci && NEXT_PUBLIC_API_URL="" TALLY_STATIC_EXPORT=1 npm run build && rm -rf backend/app/static && cp -r out backend/app/static
+    npm ci && NEXT_TELEMETRY_DISABLED=1 NEXT_PUBLIC_API_URL="" TALLY_STATIC_EXPORT=1 npm run build && rm -rf backend/app/static && cp -r out backend/app/static
   else
     echo "The UI bundle (backend/app/static) is missing and Node.js isn't installed to rebuild it."
     echo "Re-download the full repo, or install Node from https://nodejs.org/ and run this again."

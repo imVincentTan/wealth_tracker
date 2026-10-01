@@ -49,6 +49,7 @@ if not exist backend\app\static\index.html (
   call npm ci
   set TALLY_STATIC_EXPORT=1
   set NEXT_PUBLIC_API_URL=
+  set NEXT_TELEMETRY_DISABLED=1
   call npm run build
   rmdir /s /q backend\app\static
   xcopy /e /i /q out backend\app\static >nul
