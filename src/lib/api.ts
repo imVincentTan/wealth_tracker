@@ -90,14 +90,17 @@ export function institutionFromName(name: string): ApiAccount["institution"] {
 
 export function parserConfigFromMapping(
   mapping: ColumnMapping,
-  invertAmounts: boolean
+  invertAmounts: boolean,
+  extras: { delimiter?: string; headerRow?: number } = {}
 ): Record<string, unknown> {
   const config: Record<string, unknown> = {
     date_column: mapping.date,
     description_column: mapping.description,
     invert_sign: invertAmounts,
     date_format: "%m/%d/%Y",
+    header_row: extras.headerRow ?? 1,
   };
+  if (extras.delimiter) config.delimiter = extras.delimiter;
   if (mapping.debit || mapping.credit) {
     config.amount_mode = "debit_credit";
     config.debit_column = mapping.debit;

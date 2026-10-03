@@ -58,14 +58,6 @@ export function looksLikeHeader(line: string): boolean {
   return hasDate && hasAmount;
 }
 
-export function extractCsvBody(text: string): string {
-  const cleaned = text.replace(/^\uFEFF/, "");
-  const lines = cleaned.split(/\r?\n/);
-  const idx = lines.findIndex((line) => looksLikeHeader(line));
-  if (idx <= 0) return cleaned;
-  return lines.slice(idx).join("\n");
-}
-
 function detectFormat(headers: string[], fileName: string): {
   formatName: string;
   confidence: ImportPreview["confidence"];
@@ -198,16 +190,54 @@ function shouldInvert(kind: AccountKind, formatName: string, amounts: number[], 
   return false;
 }
 
-export function parseCsvText(text: string, fileName: string): ImportPreview {
-  const body = extractCsvBody(text);
-  const parsed = Papa.parse<Record<string, string>>(body, {
-    header: true,
+export type ParseOptions = {
+  /** "" or undefined = auto-detect */
+  delimiter?: string;
+  /** 1-indexed row holding column names; 0 = no header row; undefined = auto-detect */
+  headerRow?: number;
+};
+
+function autoDetectHeaderRow(rows: string[][]): number {
+  // Headers live at the top; scanning the whole file would promote a data row
+  // whose text happens to contain header keywords (e.g. "DATE CORRECTION
+  // CREDIT") and silently drop every row above it.
+  const idx = rows.slice(0, 10).findIndex((cells) => looksLikeHeader(cells.join(",")));
+  if (idx >= 0) return idx + 1;
+  // No keyword header found: if the first row already looks like data
+  // (starts with a date), treat the file as headerless.
+  if (rows.length > 0 && rows[0].length > 0 && parseDate(rows[0][0])) return 0;
+  return 1;
+}
+
+export function parseCsvText(text: string, fileName: string, options: ParseOptions = {}): ImportPreview {
+  const cleaned = text.replace(/^\uFEFF/, "");
+  const parsed = Papa.parse<string[]>(cleaned, {
+    header: false,
     skipEmptyLines: "greedy",
-    transformHeader: (h) => h.replace(/^\uFEFF/, "").trim(),
+    delimiter: options.delimiter || undefined,
   });
-  const headers = (parsed.meta.fields ?? []).filter(Boolean);
-  const rows = (parsed.data ?? []).filter((row) =>
-    Object.values(row).some((v) => String(v ?? "").trim() !== "")
+  // Always report the resolved delimiter (Papa's detection when the user left
+  // it on Auto) so the backend never re-sniffs independently and diverges
+  // from the preview the user approved.
+  const delimiter = parsed.meta.delimiter ?? options.delimiter ?? "";
+  const allRows = (parsed.data ?? [])
+    .map((cells) => cells.map((c) => String(c ?? "")))
+    .filter((cells) => cells.some((c) => c.trim() !== ""));
+
+  const headerRow = options.headerRow ?? autoDetectHeaderRow(allRows);
+
+  let headers: string[];
+  let dataRows: string[][];
+  if (headerRow <= 0 || allRows.length === 0) {
+    const width = Math.max(0, ...allRows.map((r) => r.length));
+    headers = Array.from({ length: width }, (_, i) => `Column ${i + 1}`);
+    dataRows = allRows;
+  } else {
+    headers = (allRows[headerRow - 1] ?? []).map((h) => h.trim());
+    dataRows = allRows.slice(headerRow);
+  }
+  const rows = dataRows.map((cells) =>
+    Object.fromEntries(headers.map((h, i) => [h, cells[i] ?? ""]))
   );
   const mapping = buildMapping(headers);
   const detailsHeader = pickHeader(headers, ["details"]);
@@ -242,6 +272,8 @@ export function parseCsvText(text: string, fileName: string): ImportPreview {
     suggestedKind: detected.kind,
     suggestedName: suggestedAccountName(fileName, detected.kind, detected.formatName),
     invertAmounts,
+    headerRow,
+    delimiter,
     fileName,
   };
 }

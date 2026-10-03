@@ -118,3 +118,28 @@ describe("buildReport", () => {
     assert.equal(report.byCategory[0]?.id, "housing");
   });
 });
+
+describe("headerless and separator handling", () => {
+  it("treats a headerless file as all data with synthetic columns", () => {
+    const csv = "09/15/2026,ANNUAL FEE,139.00,,2024.78\n09/16/2026,LOBLAWS,88.14,,1886.64\n";
+    const preview = parseCsvText(csv, "td-card.csv");
+    assert.equal(preview.headerRow, 0);
+    assert.deepEqual(preview.headers, ["Column 1", "Column 2", "Column 3", "Column 4", "Column 5"]);
+    assert.equal(preview.rows.length, 2);
+    assert.equal(preview.rows[0]["Column 2"], "ANNUAL FEE");
+  });
+
+  it("honors an explicit separator", () => {
+    const csv = "Date;Description;Amount\n09/15/2026;COFFEE;-4.50\n";
+    const preview = parseCsvText(csv, "x.csv", { delimiter: ";" });
+    assert.deepEqual(preview.headers, ["Date", "Description", "Amount"]);
+    assert.equal(preview.rows[0]["Amount"], "-4.50");
+  });
+
+  it("skips preamble rows when headerRow is set", () => {
+    const csv = "Account summary\nGenerated 09/30\nDate,Description,Amount\n09/15/2026,COFFEE,-4.50\n";
+    const preview = parseCsvText(csv, "x.csv", { headerRow: 3 });
+    assert.deepEqual(preview.headers, ["Date", "Description", "Amount"]);
+    assert.equal(preview.rows.length, 1);
+  });
+});

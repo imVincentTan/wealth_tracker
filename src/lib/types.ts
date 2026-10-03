@@ -68,4 +68,8 @@ export type ImportPreview = {
   suggestedName: string;
   invertAmounts: boolean;
   fileName: string;
+  /** 1-indexed row holding column names; 0 = no header row */
+  headerRow: number;
+  /** "" = auto-detected */
+  delimiter: string;
 };
