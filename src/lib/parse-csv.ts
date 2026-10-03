@@ -58,14 +58,6 @@ export function looksLikeHeader(line: string): boolean {
   return hasDate && hasAmount;
 }
 
-export function extractCsvBody(text: string): string {
-  const cleaned = text.replace(/^\uFEFF/, "");
-  const lines = cleaned.split(/\r?\n/);
-  const idx = lines.findIndex((line) => looksLikeHeader(line));
-  if (idx <= 0) return cleaned;
-  return lines.slice(idx).join("\n");
-}
-
 function detectFormat(headers: string[], fileName: string): {
   formatName: string;
   confidence: ImportPreview["confidence"];
@@ -206,7 +198,10 @@ export type ParseOptions = {
 };
 
 function autoDetectHeaderRow(rows: string[][]): number {
-  const idx = rows.findIndex((cells) => looksLikeHeader(cells.join(",")));
+  // Headers live at the top; scanning the whole file would promote a data row
+  // whose text happens to contain header keywords (e.g. "DATE CORRECTION
+  // CREDIT") and silently drop every row above it.
+  const idx = rows.slice(0, 10).findIndex((cells) => looksLikeHeader(cells.join(",")));
   if (idx >= 0) return idx + 1;
   // No keyword header found: if the first row already looks like data
   // (starts with a date), treat the file as headerless.
@@ -221,6 +216,10 @@ export function parseCsvText(text: string, fileName: string, options: ParseOptio
     skipEmptyLines: "greedy",
     delimiter: options.delimiter || undefined,
   });
+  // Always report the resolved delimiter (Papa's detection when the user left
+  // it on Auto) so the backend never re-sniffs independently and diverges
+  // from the preview the user approved.
+  const delimiter = parsed.meta.delimiter ?? options.delimiter ?? "";
   const allRows = (parsed.data ?? [])
     .map((cells) => cells.map((c) => String(c ?? "")))
     .filter((cells) => cells.some((c) => c.trim() !== ""));
@@ -274,7 +273,7 @@ export function parseCsvText(text: string, fileName: string, options: ParseOptio
     suggestedName: suggestedAccountName(fileName, detected.kind, detected.formatName),
     invertAmounts,
     headerRow,
-    delimiter: options.delimiter ?? "",
+    delimiter,
     fileName,
   };
 }

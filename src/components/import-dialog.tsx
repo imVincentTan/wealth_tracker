@@ -89,6 +89,10 @@ export function ImportDialog({ open, onOpenChange }: Props) {
       delimiter: nextDelimiter,
       headerRow: nextHeaderRow,
     });
+    // Refresh the suggestions only while they still reflect the previous
+    // suggestion — never clobber a name/kind the user typed themselves.
+    if (preview && name === preview.suggestedName) setName(next.suggestedName);
+    if (preview && kind === preview.suggestedKind) setKind(next.suggestedKind);
     setPreview(next);
     setMapping(next.mapping);
     setInvert(next.invertAmounts);
@@ -107,7 +111,9 @@ export function ImportDialog({ open, onOpenChange }: Props) {
         kind,
         mapping,
         invertAmounts: invert,
-        delimiter,
+        // Always the resolved delimiter from the preview (never "" / re-sniff),
+        // so the commit-time backend parse matches what the user approved.
+        delimiter: preview.delimiter,
         headerRow,
       });
       toast.success(
@@ -245,7 +251,7 @@ export function ImportDialog({ open, onOpenChange }: Props) {
                 />
               </div>
               <p className="pb-1.5 text-xs text-muted-foreground">
-                Row that holds column names. 0 = no header row.
+                Row that holds column names (blank lines don&apos;t count). 0 = no header row.
               </p>
             </div>
 
