@@ -44,6 +44,9 @@ export function ImportDialog({ open, onOpenChange }: Props) {
   const [invert, setInvert] = useState(false);
   const [mapping, setMapping] = useState<ColumnMapping | null>(null);
   const [showColumnEditor, setShowColumnEditor] = useState(false);
+  const [fileText, setFileText] = useState("");
+  const [delimiter, setDelimiter] = useState("");
+  const [headerRow, setHeaderRow] = useState(1);
 
   function reset() {
     setPreview(null);
@@ -54,6 +57,9 @@ export function ImportDialog({ open, onOpenChange }: Props) {
     setInvert(false);
     setMapping(null);
     setShowColumnEditor(false);
+    setFileText("");
+    setDelimiter("");
+    setHeaderRow(1);
     if (fileRef.current) fileRef.current.value = "";
   }
 
@@ -68,10 +74,24 @@ export function ImportDialog({ open, onOpenChange }: Props) {
     }
     setPreview(next);
     setFile(file);
+    setFileText(text);
+    setDelimiter(next.delimiter);
+    setHeaderRow(next.headerRow);
     setName(next.suggestedName);
     setKind(next.suggestedKind);
     setInvert(next.invertAmounts);
     setMapping(next.mapping);
+  }
+
+  function reparse(nextDelimiter: string, nextHeaderRow: number) {
+    if (!file || !fileText) return;
+    const next = parseCsvText(fileText, file.name, {
+      delimiter: nextDelimiter,
+      headerRow: nextHeaderRow,
+    });
+    setPreview(next);
+    setMapping(next.mapping);
+    setInvert(next.invertAmounts);
   }
 
   async function confirmImport() {
@@ -87,6 +107,8 @@ export function ImportDialog({ open, onOpenChange }: Props) {
         kind,
         mapping,
         invertAmounts: invert,
+        delimiter,
+        headerRow,
       });
       toast.success(
         result.skipped
@@ -184,6 +206,47 @@ export function ImportDialog({ open, onOpenChange }: Props) {
               >
                 Choose a different file
               </button>
+            </div>
+
+            <div className="flex flex-wrap items-end gap-3 rounded-xl border bg-muted/30 p-3 text-sm">
+              <div className="space-y-1.5">
+                <Label htmlFor="delimiter">Separator</Label>
+                <select
+                  id="delimiter"
+                  value={delimiter}
+                  onChange={(e) => {
+                    const d = e.target.value;
+                    setDelimiter(d);
+                    reparse(d, headerRow);
+                  }}
+                  className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
+                >
+                  <option value="">Auto</option>
+                  <option value=",">Comma</option>
+                  <option value=";">Semicolon</option>
+                  <option value={"\t"}>Tab</option>
+                  <option value="|">Pipe</option>
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="header-row">Header row</Label>
+                <Input
+                  id="header-row"
+                  type="number"
+                  min={0}
+                  max={50}
+                  value={headerRow}
+                  onChange={(e) => {
+                    const n = Math.max(0, Math.min(50, Number(e.target.value) || 0));
+                    setHeaderRow(n);
+                    reparse(delimiter, n);
+                  }}
+                  className="h-8 w-24"
+                />
+              </div>
+              <p className="pb-1.5 text-xs text-muted-foreground">
+                Row that holds column names. 0 = no header row.
+              </p>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
