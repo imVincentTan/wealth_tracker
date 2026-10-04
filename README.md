@@ -28,23 +28,52 @@ docker compose up --build          # Postgres + API on :8000 + UI on :43127
 
 ## Develop
 
-UI development with hot reload (split servers):
+**Hot reload lives here, not in the one-click scripts.** `start.command` / `start.bat` serve the committed UI bundle with a plain uvicorn process — no auto-restart on code changes, no UI rebuild. Use them to *try* the app; use the split setup below to *change* it. After a `git pull`, just restart the one-click script: it refreshes Python dependencies on every run, and the pulled UI bundle is already built.
+
+The split setup runs uvicorn with `--reload` (auto-restarts on Python saves) plus the Next.js dev server on **:43127** (hot-reloads UI edits in the browser). First time only: `npm install`, and create the backend venv — or just run the one-click script once, which creates `backend/.venv` for you.
+
+**Git Bash / macOS / Linux:**
 
 ```bash
-docker compose up --build db api               # or your own Postgres + DATABASE_URL
-npm install
-NEXT_PUBLIC_API_URL=http://127.0.0.1:8000 npm run dev   # UI dev server on :43127
+# terminal 1 — API on :8000, auto-restarts on save
+cd backend
+source .venv/Scripts/activate        # macOS/Linux: source .venv/bin/activate
+uvicorn app.main:app --reload --port 8000
+
+# terminal 2 — UI dev server on :43127
+NEXT_PUBLIC_API_URL=http://127.0.0.1:8000 npm run dev
 ```
 
-Backend only, no Docker:
+**Windows PowerShell:**
 
-```bash
+```powershell
+# terminal 1
 cd backend
-python -m venv .venv
-source .venv/bin/activate          # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+.\.venv\Scripts\Activate.ps1
+uvicorn app.main:app --reload --port 8000
+
+# terminal 2
+$env:NEXT_PUBLIC_API_URL="http://127.0.0.1:8000"; npm run dev
+```
+
+If PowerShell blocks activation ("running scripts is disabled"), allow it once with `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser` — or skip activation and call the venv directly from the repo root:
+
+```powershell
+.\backend\.venv\Scripts\uvicorn.exe app.main:app --app-dir backend --reload --port 8000
+```
+
+**Windows cmd.exe:**
+
+```cmd
+backend\.venv\Scripts\activate
 uvicorn app.main:app --reload --port 8000
 ```
+
+```cmd
+set NEXT_PUBLIC_API_URL=http://127.0.0.1:8000 && npm run dev
+```
+
+Then work at http://127.0.0.1:43127. Prefer Docker for the API side? `docker compose up --build db api` still works in place of the venv.
 
 Verify changes: `npm run test`, `npm run lint`, `npm run build`, then exercise the API flow (preview → commit → dedup → dashboard) with the sample CSVs in `public/samples/`.
 
