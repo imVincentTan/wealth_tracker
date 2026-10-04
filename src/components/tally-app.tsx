@@ -4,12 +4,14 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
   Download,
+  FolderOpen,
   Pencil,
   Printer,
   Upload,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { DataFilesDialog } from "@/components/data-files-dialog";
 import { ImportDialog } from "@/components/import-dialog";
 import { RenameAccountDialog } from "@/components/rename-account-dialog";
 import { CategoryChart } from "@/components/category-chart";
@@ -39,6 +41,7 @@ export function TallyApp() {
   const loadSample = useLedger((s) => s.loadSample);
   const error = useLedger((s) => s.error);
   const [importOpen, setImportOpen] = useState(false);
+  const [dataFilesOpen, setDataFilesOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [preset, setPreset] = useState<DatePreset>("all");
   const [accountId, setAccountId] = useState("all");
@@ -167,6 +170,10 @@ export function TallyApp() {
                   <Download data-icon="inline-start" />
                   Export CSV
                 </Button>
+                <Button variant="outline" size="sm" onClick={() => setDataFilesOpen(true)}>
+                  <FolderOpen data-icon="inline-start" />
+                  Data files
+                </Button>
                 <Button variant="outline" size="sm" onClick={() => window.print()}>
                   <Printer data-icon="inline-start" />
                   Print
@@ -260,6 +267,7 @@ export function TallyApp() {
       </main>
 
       <ImportDialog open={importOpen} onOpenChange={setImportOpen} />
+      <DataFilesDialog open={dataFilesOpen} onOpenChange={setDataFilesOpen} accounts={accounts} />
       {renameOpen && renameTarget ? (
         <RenameAccountDialog account={renameTarget} onClose={() => setRenameOpen(false)} />
       ) : null}

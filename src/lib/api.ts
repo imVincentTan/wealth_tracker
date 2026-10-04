@@ -38,6 +38,17 @@ export type ApiTransaction = {
   transaction_type: "income" | "expense" | "transfer";
 };
 
+export type ApiImport = {
+  id: number;
+  account_id: number;
+  filename: string;
+  status: "preview" | "committed" | "failed";
+  row_count: number;
+  created_at: string;
+  // Archive path relative to the backend data dir, or null if not archived.
+  raw_file: string | null;
+};
+
 export const CATEGORY_TO_API: Record<CategoryId, string> = {
   groceries: "Groceries",
   dining: "Dining",
@@ -137,6 +148,7 @@ export const api = {
       body: JSON.stringify(body),
     }),
   getTransactions: () => request<ApiTransaction[]>("/transactions?limit=5000"),
+  getImports: () => request<ApiImport[]>("/imports"),
   previewImport: async (accountId: number, file: File) => {
     const form = new FormData();
     form.append("account_id", String(accountId));

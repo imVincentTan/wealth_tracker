@@ -88,6 +88,18 @@ class ImportCommitResponse(BaseModel):
     skipped_duplicates: int
 
 
+class ImportRead(BaseModel):
+    id: int
+    account_id: int
+    filename: str
+    status: ImportStatus
+    row_count: int
+    created_at: datetime
+    # Path of the archived raw CSV relative to the backend data dir
+    # (e.g. "raw/td-checking/12-statement.csv"), or None if not archived.
+    raw_file: str | None = None
+
+
 class TransactionRead(BaseModel):
     id: int
     account_id: int
