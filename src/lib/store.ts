@@ -131,6 +131,7 @@ export const useLedger = create<LedgerState>((set, get) => ({
         credit: null,
         category: null,
         type: "Details",
+        balance: "Balance",
       },
       invertAmounts: false,
     });
@@ -146,6 +147,7 @@ export const useLedger = create<LedgerState>((set, get) => ({
         credit: null,
         category: "Category",
         type: "Type",
+        balance: null,
       },
       invertAmounts: false,
     });

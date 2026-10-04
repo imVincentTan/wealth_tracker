@@ -119,6 +119,39 @@ describe("buildReport", () => {
   });
 });
 
+describe("balance column", () => {
+  it("auto-maps a Balance header without treating it as an amount", () => {
+    const preview = parseCsvText(CHASE_CHECKING_CSV, "chase-checking.csv");
+    assert.equal(preview.mapping.balance, "Balance");
+    assert.equal(preview.mapping.amount, "Amount");
+    const txns = rowsToTransactions(preview, {
+      accountId: "acc_checking",
+      mapping: preview.mapping,
+      invertAmounts: preview.invertAmounts,
+    });
+    const rent = txns.find((t) => t.description.includes("RENT"));
+    assert.equal(rent!.amount, -1850);
+  });
+
+  it("recognizes balance alongside debit/credit columns", () => {
+    const csv =
+      "Date,Description,Withdrawals,Deposits,Balance\n" +
+      "09/15/2026,COFFEE,4.50,,100.00\n" +
+      "09/16/2026,PAYROLL,,1000.00,1100.00\n";
+    const preview = parseCsvText(csv, "td-chequing.csv");
+    assert.equal(preview.mapping.balance, "Balance");
+    assert.equal(preview.mapping.debit, "Withdrawals");
+    assert.equal(preview.mapping.credit, "Deposits");
+    assert.equal(preview.mapping.amount, null);
+    const txns = rowsToTransactions(preview, {
+      accountId: "acc_td",
+      mapping: preview.mapping,
+      invertAmounts: false,
+    });
+    assert.deepEqual(txns.map((t) => t.amount).sort((a, b) => a - b), [-4.5, 1000]);
+  });
+});
+
 describe("headerless and separator handling", () => {
   it("treats a headerless file as all data with synthetic columns", () => {
     const csv = "09/15/2026,ANNUAL FEE,139.00,,2024.78\n09/16/2026,LOBLAWS,88.14,,1886.64\n";

@@ -110,6 +110,9 @@ export function parserConfigFromMapping(
     config.amount_column = mapping.amount;
   }
   if (mapping.type) config.type_column = mapping.type;
+  // Recorded for completeness; the parser never reads it, so a balance column
+  // can never leak into amounts at commit time.
+  if (mapping.balance) config.balance_column = mapping.balance;
   return config;
 }
 

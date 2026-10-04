@@ -48,6 +48,8 @@ export type ColumnMapping = {
   credit: string | null;
   category: string | null;
   type: string | null;
+  /** Running-balance column, recognized so it is never mistaken for an amount */
+  balance: string | null;
 };
 
 export type DatePreset =

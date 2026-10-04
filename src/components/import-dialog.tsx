@@ -339,6 +339,7 @@ const COLUMN_ROLES: { value: keyof ColumnMapping | ""; label: string }[] = [
   { value: "amount", label: "Amount (signed)" },
   { value: "debit", label: "Debit / money out" },
   { value: "credit", label: "Credit / money in" },
+  { value: "balance", label: "Balance (ignored)" },
   { value: "category", label: "Bank category" },
   { value: "type", label: "Type marker" },
 ];

@@ -32,7 +32,7 @@ Personal finance tracker. Upload CSV statements from bank and credit card accoun
 - Store the original CSV text (`Import.raw_csv`) and every raw row as JSON (`RawImportRow.raw_data`).
 - Imports are preview-then-commit; re-importing the same statement is deduplicated via `dedup_hash`.
 - Saved accounts carry `parser_config` (institution + account type + column mapping).
-- Parsers: TD chequing/savings (Withdrawals/Deposits), TD card, Amex, Chase, plus a generic Date/Description/Amount detector with column mapping.
+- Parsers: TD chequing/savings (Withdrawals/Deposits), TD card, Amex, Chase, plus a generic Date/Description/Amount detector with column mapping. A Balance column is a recognized mapping role but is never used as an amount.
 - Transfers (card payments, Zelle, ATM cash) are stored but **excluded** from spending totals.
 - CAD is the reporting currency.
 - Recategorize optionally applies to the merchant (creates a `CategoryRule`). User-created rules must take precedence over seeded defaults — rules are loaded newest-first in `backend/app/routers/imports.py`; keep it that way.

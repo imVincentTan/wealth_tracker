@@ -33,6 +33,15 @@ const DEBIT_HEADERS = ["debit", "withdrawal", "withdrawals"];
 const CREDIT_HEADERS = ["credit", "deposit", "deposits"];
 const CATEGORY_HEADERS = ["category"];
 const TYPE_HEADERS = ["type", "details", "transaction type", "cr/dr", "status"];
+const BALANCE_HEADERS = [
+  "balance",
+  "running balance",
+  "available balance",
+  "current balance",
+  "ending balance",
+  "closing balance",
+  "ledger balance",
+];
 
 function normHeader(h: string): string {
   return h.replace(/^\uFEFF/, "").trim().toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
@@ -130,6 +139,7 @@ export function buildMapping(headers: string[]): ColumnMapping {
     credit: pickHeader(headers, CREDIT_HEADERS),
     category: pickHeader(headers, CATEGORY_HEADERS),
     type: pickHeader(headers, TYPE_HEADERS),
+    balance: pickHeader(headers, BALANCE_HEADERS),
   };
 }
 
