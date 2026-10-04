@@ -5,6 +5,7 @@ from app.database import get_db
 from app.models import Account
 from app.parsers.defaults import get_default_parser_config
 from app.schemas import AccountCreate, AccountRead, AccountUpdate
+from app.services.raw_files import move_archive_dir
 
 router = APIRouter(prefix="/accounts", tags=["accounts"])
 
@@ -45,10 +46,15 @@ def update_account(account_id: int, payload: AccountUpdate, db: Session = Depend
     account = db.get(Account, account_id)
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
+    old_name = account.name
     if payload.name is not None:
         account.name = payload.name
     if payload.parser_config is not None:
         account.parser_config = payload.parser_config
     db.commit()
     db.refresh(account)
+    # Keep the on-disk raw-CSV archive aligned with the new name (no-op when
+    # the name didn't change or the slugs match).
+    if payload.name is not None and payload.name != old_name:
+        move_archive_dir(old_name, payload.name)
     return account

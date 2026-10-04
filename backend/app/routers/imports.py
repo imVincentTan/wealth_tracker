@@ -1,4 +1,7 @@
+import logging
+
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -12,10 +15,13 @@ from app.models import (
     Transaction,
     TransactionType,
 )
-from app.schemas import ImportCommitResponse, ImportPreviewResponse, ParsedTransactionPreview
+from app.schemas import ImportCommitResponse, ImportPreviewResponse, ImportRead, ParsedTransactionPreview
 from app.services.csv_parser import apply_category_rules, parse_csv_rows
+from app.services.raw_files import raw_file_relpath, safe_filename, write_raw_csv
 
 router = APIRouter(prefix="/imports", tags=["imports"])
+
+logger = logging.getLogger(__name__)
 
 
 def _load_rules(db: Session) -> list[tuple[str, str, bool]]:
@@ -41,6 +47,48 @@ def _typed_category(description: str, amount_type: TransactionType, rules: list[
     if not category:
         category = "Income" if amount_type == TransactionType.INCOME else "Other"
     return category, amount_type
+
+
+@router.get("", response_model=list[ImportRead])
+def list_imports(db: Session = Depends(get_db)):
+    imports = db.query(Import).order_by(Import.id.desc()).all()
+    account_names = {a.id: a.name for a in db.query(Account).all()}
+    return [
+        ImportRead(
+            id=imp.id,
+            account_id=imp.account_id,
+            filename=imp.filename,
+            status=imp.status,
+            row_count=imp.row_count,
+            created_at=imp.imported_at,
+            # Files are archived exactly on commit, so only committed imports
+            # have one. Recomputed from the same deterministic layout.
+            raw_file=(
+                raw_file_relpath(account_names[imp.account_id], imp.id, imp.filename)
+                if imp.status == ImportStatus.COMMITTED and imp.account_id in account_names
+                else None
+            ),
+        )
+        for imp in imports
+    ]
+
+
+@router.get("/{import_id}/raw_csv")
+def download_raw_csv(import_id: int, db: Session = Depends(get_db)):
+    import_row = db.get(Import, import_id)
+    if not import_row:
+        raise HTTPException(status_code=404, detail="Import not found")
+    account = db.get(Account, import_row.account_id)
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    content = import_csv_content(import_row, account)
+    filename = safe_filename(import_row.filename)
+    return PlainTextResponse(
+        content,
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.post("/preview", response_model=ImportPreviewResponse)
@@ -124,6 +172,26 @@ async def preview_import(
     )
 
 
+def import_csv_content(import_row: Import, account: Account) -> str:
+    """The exact CSV content for an import: stored text, or rebuilt from raw rows."""
+    if import_row.raw_csv:
+        return import_row.raw_csv
+
+    content_rows = import_row.raw_rows
+    if not content_rows:
+        raise HTTPException(status_code=400, detail="Import has no rows")
+    import csv
+    import io
+
+    fieldnames = list(content_rows[0].raw_data.keys())
+    buffer = io.StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=fieldnames)
+    writer.writeheader()
+    for row in sorted(content_rows, key=lambda r: r.row_number):
+        writer.writerow(row.raw_data)
+    return buffer.getvalue()
+
+
 @router.post("/{import_id}/commit", response_model=ImportCommitResponse)
 def commit_import(import_id: int, db: Session = Depends(get_db)):
     import_row = db.get(Import, import_id)
@@ -136,28 +204,14 @@ def commit_import(import_id: int, db: Session = Depends(get_db)):
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
 
-    if import_row.raw_csv:
-        parsed = parse_csv_rows(
-            import_row.raw_csv,
-            account.parser_config or {},
-            account.id,
-            account.currency,
-            filename=import_row.filename,
-        )
-    else:
-        content_rows = import_row.raw_rows
-        if not content_rows:
-            raise HTTPException(status_code=400, detail="Import has no rows")
-        import csv
-        import io
-
-        fieldnames = list(content_rows[0].raw_data.keys())
-        buffer = io.StringIO()
-        writer = csv.DictWriter(buffer, fieldnames=fieldnames)
-        writer.writeheader()
-        for row in sorted(content_rows, key=lambda r: r.row_number):
-            writer.writerow(row.raw_data)
-        parsed = parse_csv_rows(buffer.getvalue(), account.parser_config or {}, account.id, account.currency)
+    content = import_csv_content(import_row, account)
+    parsed = parse_csv_rows(
+        content,
+        account.parser_config or {},
+        account.id,
+        account.currency,
+        filename=import_row.filename,
+    )
 
     rules = _load_rules(db)
     existing_hashes = {
@@ -192,6 +246,12 @@ def commit_import(import_id: int, db: Session = Depends(get_db)):
     import_row.status = ImportStatus.COMMITTED
     import_row.row_count = committed
     db.commit()
+
+    # Archive only after the DB commit succeeds, so a failed DB commit never
+    # leaves orphan files. A failed archive write logs a warning and continues.
+    raw_file = write_raw_csv(account.name, import_row.id, import_row.filename, content)
+    if raw_file is None:
+        logger.warning("Import %s committed without an archived raw CSV", import_row.id)
 
     return ImportCommitResponse(
         import_id=import_row.id,
