@@ -27,6 +27,8 @@ type LedgerState = {
     kind: AccountKind;
     mapping: ColumnMapping;
     invertAmounts: boolean;
+    delimiter?: string;
+    headerRow?: number;
   }) => Promise<ImportResult>;
   loadSample: () => Promise<ImportResult>;
   setCategory: (id: string, category: CategoryId, applyToMerchant: boolean) => Promise<void>;
@@ -60,10 +62,11 @@ async function ensureAccount(
   kind: AccountKind,
   mapping: ColumnMapping,
   invertAmounts: boolean,
-  existing: Account[]
+  existing: Account[],
+  parseExtras: { delimiter?: string; headerRow?: number } = {}
 ): Promise<number> {
   const found = existing.find((a) => a.name.toLowerCase() === name.toLowerCase());
-  const parser_config = parserConfigFromMapping(mapping, invertAmounts);
+  const parser_config = parserConfigFromMapping(mapping, invertAmounts, parseExtras);
   if (found) {
     await api.updateAccount(Number(found.id), { parser_config });
     return Number(found.id);
@@ -99,8 +102,11 @@ export const useLedger = create<LedgerState>((set, get) => ({
       });
     }
   },
-  importFile: async ({ file, name, kind, mapping, invertAmounts }) => {
-    const accountId = await ensureAccount(name, kind, mapping, invertAmounts, get().accounts);
+  importFile: async ({ file, name, kind, mapping, invertAmounts, delimiter, headerRow }) => {
+    const accountId = await ensureAccount(name, kind, mapping, invertAmounts, get().accounts, {
+      delimiter,
+      headerRow,
+    });
     const preview = await api.previewImport(accountId, file);
     const committed = await api.commitImport(preview.import_id);
     await get().refresh();
