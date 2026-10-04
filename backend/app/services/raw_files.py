@@ -49,6 +49,35 @@ def raw_file_relpath(account_name: str, import_id: int, filename: str) -> str:
     return f"raw/{account_slug(account_name)}/{import_id}-{safe_filename(filename)}"
 
 
+def move_archive_dir(old_account_name: str, new_account_name: str) -> None:
+    """Keep the archive aligned after a rename by moving the account's directory.
+
+    Files are named by import id, so merging into an existing directory (two
+    accounts converging on the same slug) can't collide. A missing directory is
+    a no-op; failures are logged and skipped — the archive is a convenience,
+    never a source of truth.
+    """
+    old_slug = account_slug(old_account_name)
+    new_slug = account_slug(new_account_name)
+    if old_slug == new_slug:
+        return
+    root = Path(settings.data_dir) / "raw"
+    old_dir = root / old_slug
+    new_dir = root / new_slug
+    if not old_dir.is_dir():
+        return
+    try:
+        if not new_dir.is_dir():
+            old_dir.rename(new_dir)
+            return
+        for f in old_dir.iterdir():
+            if f.is_file():
+                f.replace(new_dir / f.name)
+        old_dir.rmdir()
+    except OSError as exc:
+        logger.warning("Could not move raw archive %s -> %s: %s", old_dir, new_dir, exc)
+
+
 def write_raw_csv(account_name: str, import_id: int, filename: str, content: str) -> str | None:
     """Write the import's raw CSV to the archive; return the relative path or None."""
     relpath = raw_file_relpath(account_name, import_id, filename)

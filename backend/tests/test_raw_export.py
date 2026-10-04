@@ -128,6 +128,23 @@ def test_raw_csv_download_reconstructs_from_raw_rows(client):
     assert res.headers["content-disposition"] == 'attachment; filename="reconstructed.csv"'
 
 
+def test_rename_moves_archive_dir(client):
+    account_id = _account_id(client, "Old Name!")
+    import_id = _import_csv(client, account_id, "stmt.csv")
+    data_root = Path(settings.data_dir)
+    old_file = data_root / "raw" / "old-name" / f"{import_id}-stmt.csv"
+    assert old_file.is_file()
+
+    client.patch(f"/api/accounts/{account_id}", json={"name": "New Name"})
+
+    assert not (data_root / "raw" / "old-name").exists()
+    assert (data_root / "raw" / "new-name" / f"{import_id}-stmt.csv").is_file()
+
+    # Same-slug rename (whitespace/punctuation differences) is a no-op.
+    client.patch(f"/api/accounts/{account_id}", json={"name": "New  Name!"})
+    assert (data_root / "raw" / "new-name" / f"{import_id}-stmt.csv").is_file()
+
+
 def test_archive_survives_db_reset_and_path_shape_is_deterministic(client):
     account_id = _account_id(client, "Last Bank")
     import_id = _import_csv(client, account_id, "statement.csv")
