@@ -33,6 +33,7 @@ type LedgerState = {
   loadSample: () => Promise<ImportResult>;
   setCategory: (id: string, category: CategoryId, applyToMerchant: boolean) => Promise<void>;
   deleteTransaction: (id: string) => Promise<void>;
+  renameAccount: (id: string, name: string) => Promise<void>;
 };
 
 function mapAccount(account: ApiAccount): Account {
@@ -166,6 +167,10 @@ export const useLedger = create<LedgerState>((set, get) => ({
   },
   deleteTransaction: async (id) => {
     await api.deleteTransaction(Number(id));
+    await get().refresh();
+  },
+  renameAccount: async (id, name) => {
+    await api.updateAccount(Number(id), { name });
     await get().refresh();
   },
 }));

@@ -4,12 +4,14 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
   Download,
+  Pencil,
   Printer,
   Upload,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ImportDialog } from "@/components/import-dialog";
+import { RenameAccountDialog } from "@/components/rename-account-dialog";
 import { CategoryChart } from "@/components/category-chart";
 import { TrendChart } from "@/components/trend-chart";
 import { TransactionTable } from "@/components/transaction-table";
@@ -37,8 +39,16 @@ export function TallyApp() {
   const loadSample = useLedger((s) => s.loadSample);
   const error = useLedger((s) => s.error);
   const [importOpen, setImportOpen] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
   const [preset, setPreset] = useState<DatePreset>("all");
   const [accountId, setAccountId] = useState("all");
+
+  // The rename affordance needs a concrete account: the selected one, or the
+  // only account when "all" is picked and just one exists.
+  const renameTarget = useMemo(() => {
+    if (accountId !== "all") return accounts.find((a) => a.id === accountId) ?? null;
+    return accounts.length === 1 ? accounts[0] : null;
+  }, [accounts, accountId]);
 
   const range = rangeFromPreset(preset);
   const visible = useMemo(
@@ -99,18 +109,35 @@ export function TallyApp() {
                   </option>
                 ))}
               </select>
-              <select
-                value={accountId}
-                onChange={(e) => setAccountId(e.target.value)}
-                className="h-8 max-w-40 rounded-lg border border-input bg-background px-2.5 text-sm"
-              >
-                <option value="all">All accounts</option>
-                {accounts.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name}
-                  </option>
-                ))}
-              </select>
+              <div className="flex items-center gap-1.5">
+                <select
+                  value={accountId}
+                  onChange={(e) => setAccountId(e.target.value)}
+                  className="h-8 max-w-40 rounded-lg border border-input bg-background px-2.5 text-sm"
+                >
+                  <option value="all">All accounts</option>
+                  {accounts.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}
+                    </option>
+                  ))}
+                </select>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Rename account"
+                  title={
+                    renameTarget
+                      ? `Rename ${renameTarget.name}`
+                      : "Select an account to rename it"
+                  }
+                  disabled={!renameTarget}
+                  onClick={() => setRenameOpen(true)}
+                >
+                  <Pencil />
+                  <span className="sr-only">Rename account</span>
+                </Button>
+              </div>
             </>
           )}
           <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
@@ -233,6 +260,9 @@ export function TallyApp() {
       </main>
 
       <ImportDialog open={importOpen} onOpenChange={setImportOpen} />
+      {renameOpen && renameTarget ? (
+        <RenameAccountDialog account={renameTarget} onClose={() => setRenameOpen(false)} />
+      ) : null}
     </div>
   );
 }
