@@ -14,8 +14,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { parseCsvText, amountFromRow, parseDate } from "@/lib/parse-csv";
+import { mappingFromParserConfig, overlayMapping } from "@/lib/api";
 import { useLedger } from "@/lib/store";
-import type { AccountKind, ColumnMapping, ImportPreview } from "@/lib/types";
+import type { Account, AccountKind, ColumnMapping, ImportPreview } from "@/lib/types";
 import { ACCOUNT_KINDS } from "@/lib/types";
 import { FileSpreadsheet, Upload } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -34,6 +35,7 @@ type Props = {
 
 export function ImportDialog({ open, onOpenChange }: Props) {
   const importFile = useLedger((s) => s.importFile);
+  const accounts = useLedger((s) => s.accounts);
   const fileRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -47,6 +49,8 @@ export function ImportDialog({ open, onOpenChange }: Props) {
   const [fileText, setFileText] = useState("");
   const [delimiter, setDelimiter] = useState("");
   const [headerRow, setHeaderRow] = useState(1);
+  // "" = create a new account; otherwise an existing account id.
+  const [selectedAccountId, setSelectedAccountId] = useState("");
 
   function reset() {
     setPreview(null);
@@ -60,7 +64,25 @@ export function ImportDialog({ open, onOpenChange }: Props) {
     setFileText("");
     setDelimiter("");
     setHeaderRow(1);
+    setSelectedAccountId("");
     if (fileRef.current) fileRef.current.value = "";
+  }
+
+  function applyExistingAccount(account: Account, text: string, fileName: string) {
+    const cfg = account.parserConfig ?? {};
+    const opts: { delimiter?: string; headerRow?: number } = {};
+    if (typeof cfg.delimiter === "string" && cfg.delimiter) opts.delimiter = cfg.delimiter;
+    if (typeof cfg.header_row === "number") opts.headerRow = cfg.header_row;
+    const next = parseCsvText(text, fileName, opts);
+    const overlay = overlayMapping(next.headers, next.mapping, mappingFromParserConfig(cfg));
+    setSelectedAccountId(account.id);
+    setName(account.name);
+    setKind(account.kind);
+    setPreview(next);
+    setDelimiter(next.delimiter);
+    setHeaderRow(next.headerRow);
+    setMapping(overlay);
+    setInvert(typeof cfg.invert_sign === "boolean" ? Boolean(cfg.invert_sign) : next.invertAmounts);
   }
 
   async function loadFile(file: File) {
@@ -72,9 +94,15 @@ export function ImportDialog({ open, onOpenChange }: Props) {
       setPreview(null);
       return;
     }
-    setPreview(next);
     setFile(file);
     setFileText(text);
+    const match = accounts.find((a) => a.name.toLowerCase() === next.suggestedName.toLowerCase());
+    if (match) {
+      applyExistingAccount(match, text, file.name);
+      return;
+    }
+    setSelectedAccountId("");
+    setPreview(next);
     setDelimiter(next.delimiter);
     setHeaderRow(next.headerRow);
     setName(next.suggestedName);
@@ -89,13 +117,43 @@ export function ImportDialog({ open, onOpenChange }: Props) {
       delimiter: nextDelimiter,
       headerRow: nextHeaderRow,
     });
-    // Refresh the suggestions only while they still reflect the previous
-    // suggestion — never clobber a name/kind the user typed themselves.
+    const existing = accounts.find((a) => a.id === selectedAccountId);
+    if (existing) {
+      const overlay = overlayMapping(
+        next.headers,
+        next.mapping,
+        mappingFromParserConfig(existing.parserConfig)
+      );
+      setPreview(next);
+      setMapping(overlay);
+      const cfg = existing.parserConfig ?? {};
+      setInvert(typeof cfg.invert_sign === "boolean" ? Boolean(cfg.invert_sign) : next.invertAmounts);
+      return;
+    }
     if (preview && name === preview.suggestedName) setName(next.suggestedName);
     if (preview && kind === preview.suggestedKind) setKind(next.suggestedKind);
     setPreview(next);
     setMapping(next.mapping);
     setInvert(next.invertAmounts);
+  }
+
+  function onAccountPick(value: string) {
+    if (value === "") {
+      setSelectedAccountId("");
+      if (file && fileText) {
+        const next = parseCsvText(fileText, file.name);
+        setPreview(next);
+        setDelimiter(next.delimiter);
+        setHeaderRow(next.headerRow);
+        setMapping(next.mapping);
+        setInvert(next.invertAmounts);
+        setName(next.suggestedName);
+        setKind(next.suggestedKind);
+      }
+      return;
+    }
+    const account = accounts.find((a) => a.id === value);
+    if (account && file && fileText) applyExistingAccount(account, fileText, file.name);
   }
 
   async function confirmImport() {
@@ -256,36 +314,66 @@ export function ImportDialog({ open, onOpenChange }: Props) {
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label htmlFor="account-name">Account name</Label>
-                <Input
-                  id="account-name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="account-kind">Account type</Label>
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label htmlFor="account-pick">Account</Label>
                 <select
-                  id="account-kind"
-                  value={kind}
-                  onChange={(e) => setKind(e.target.value as AccountKind)}
+                  id="account-pick"
+                  value={selectedAccountId}
+                  onChange={(e) => onAccountPick(e.target.value)}
                   className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm"
                 >
-                  {ACCOUNT_KINDS.map((k) => (
-                    <option key={k} value={k}>
-                      {KIND_LABEL[k]}
+                  <option value="">New account…</option>
+                  {accounts.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}
                     </option>
                   ))}
                 </select>
+                <p className="text-xs text-muted-foreground">
+                  One name per card or bank account (e.g. TD credit card). Drop each new
+                  statement into the same name so last month&apos;s column mapping fills in.
+                </p>
               </div>
+              {selectedAccountId ? (
+                <p className="text-sm text-muted-foreground sm:col-span-2">
+                  {KIND_LABEL[kind]}. Column roles below are from the last import of this
+                  account.
+                </p>
+              ) : (
+                <>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="account-kind">Account type</Label>
+                    <select
+                      id="account-kind"
+                      value={kind}
+                      onChange={(e) => setKind(e.target.value as AccountKind)}
+                      className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm"
+                    >
+                      {ACCOUNT_KINDS.map((k) => (
+                        <option key={k} value={k}>
+                          {KIND_LABEL[k]}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="account-name">New account name</Label>
+                    <Input
+                      id="account-name"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="e.g. TD credit card"
+                    />
+                  </div>
+                </>
+              )}
             </div>
 
-            {mapping && (preview.confidence === "low" || showColumnEditor) && (
+            {mapping && (preview.confidence === "low" || showColumnEditor || Boolean(selectedAccountId)) && (
               <ColumnRoleTable preview={preview} mapping={mapping} onChange={setMapping} />
             )}
 
-            {preview.confidence !== "low" && (
+            {preview.confidence !== "low" && !selectedAccountId && (
               <button
                 type="button"
                 className="text-xs text-primary underline-offset-4 hover:underline"

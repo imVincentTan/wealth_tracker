@@ -25,6 +25,7 @@ export type Account = {
   id: string;
   name: string;
   kind: AccountKind;
+  parserConfig: Record<string, unknown>;
 };
 
 export type Transaction = {

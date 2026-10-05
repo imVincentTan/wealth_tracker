@@ -41,6 +41,7 @@ function mapAccount(account: ApiAccount): Account {
     id: String(account.id),
     name: account.name,
     kind: kindFromApi(account.account_type),
+    parserConfig: account.parser_config ?? {},
   };
 }
 

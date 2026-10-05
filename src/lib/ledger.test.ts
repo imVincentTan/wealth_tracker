@@ -5,6 +5,7 @@ import { parseMoney } from "./money";
 import { accountIdFromName, parseCsvText, rowsToTransactions } from "./parse-csv";
 import { buildReport } from "./reports";
 import { CHASE_CHECKING_CSV, CHASE_CREDIT_CSV } from "./sample";
+import { mappingFromParserConfig, overlayMapping, parserConfigFromMapping } from "./api";
 
 describe("parseMoney", () => {
   it("handles currency, commas, and parentheses", () => {
@@ -174,5 +175,82 @@ describe("headerless and separator handling", () => {
     const preview = parseCsvText(csv, "x.csv", { headerRow: 3 });
     assert.deepEqual(preview.headers, ["Date", "Description", "Amount"]);
     assert.equal(preview.rows.length, 1);
+  });
+});
+
+describe("saved parser_config overlay", () => {
+  it("round-trips a debit/credit mapping through parser_config", () => {
+    const mapping = {
+      date: "Column 1",
+      description: "Column 2",
+      amount: null,
+      debit: "Column 3",
+      credit: "Column 4",
+      category: null,
+      type: null,
+      balance: "Column 5",
+    };
+    const config = parserConfigFromMapping(mapping, false, { delimiter: ",", headerRow: 0 });
+    const back = mappingFromParserConfig(config);
+    assert.equal(back.date, "Column 1");
+    assert.equal(back.debit, "Column 3");
+    assert.equal(back.credit, "Column 4");
+    assert.equal(back.balance, "Column 5");
+    assert.equal(config.header_row, 0);
+  });
+
+  it("lets a saved mapping override auto-detect when headers still exist", () => {
+    const auto = {
+      date: "Date",
+      description: "Memo",
+      amount: "Balance",
+      debit: null,
+      credit: null,
+      category: null,
+      type: null,
+      balance: null,
+    };
+    const saved = {
+      date: "Date",
+      description: "Memo",
+      amount: null,
+      debit: "Out",
+      credit: "In",
+      category: null,
+      type: null,
+      balance: "Balance",
+    };
+    const next = overlayMapping(["Date", "Memo", "Out", "In", "Balance"], auto, saved);
+    assert.equal(next.amount, null);
+    assert.equal(next.debit, "Out");
+    assert.equal(next.credit, "In");
+    assert.equal(next.balance, "Balance");
+  });
+
+  it("keeps auto-detect for headers the saved mapping does not have", () => {
+    const auto = {
+      date: "Date",
+      description: "Memo",
+      amount: "Amount",
+      debit: null,
+      credit: null,
+      category: null,
+      type: null,
+      balance: null,
+    };
+    const saved = {
+      date: "Transaction Date",
+      description: "Details",
+      amount: "Amount",
+      debit: null,
+      credit: null,
+      category: null,
+      type: null,
+      balance: null,
+    };
+    const next = overlayMapping(["Date", "Memo", "Amount"], auto, saved);
+    assert.equal(next.date, "Date");
+    assert.equal(next.description, "Memo");
+    assert.equal(next.amount, "Amount");
   });
 });

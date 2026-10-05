@@ -127,6 +127,40 @@ export function parserConfigFromMapping(
   return config;
 }
 
+function configString(config: Record<string, unknown>, key: string): string | null {
+  const value = config[key];
+  return typeof value === "string" && value ? value : null;
+}
+
+export function mappingFromParserConfig(config: Record<string, unknown> | null | undefined): ColumnMapping {
+  const c = config ?? {};
+  return {
+    date: configString(c, "date_column"),
+    description: configString(c, "description_column"),
+    amount: configString(c, "amount_column"),
+    debit: configString(c, "debit_column"),
+    credit: configString(c, "credit_column"),
+    category: configString(c, "category_column"),
+    type: configString(c, "type_column"),
+    balance: configString(c, "balance_column"),
+  };
+}
+
+/** Overlay a saved mapping onto the current file's headers. Saved roles whose
+ *  headers exist win (and evict conflicting auto-detect roles); missing headers
+ *  keep the auto-detect fallback. */
+export function overlayMapping(headers: string[], auto: ColumnMapping, saved: ColumnMapping): ColumnMapping {
+  const next = { ...auto };
+  for (const [role, header] of Object.entries(saved) as [keyof ColumnMapping, string | null][]) {
+    if (!header || !headers.includes(header)) continue;
+    for (const key of Object.keys(next) as (keyof ColumnMapping)[]) {
+      if (next[key] === header) next[key] = null;
+    }
+    next[role] = header;
+  }
+  return next;
+}
+
 export const api = {
   getAccounts: () => request<ApiAccount[]>("/accounts"),
   createAccount: (body: {
