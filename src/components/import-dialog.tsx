@@ -50,6 +50,7 @@ export function ImportDialog({ open, onOpenChange }: Props) {
   const [headerRow, setHeaderRow] = useState(1);
   // "" = create a new account; otherwise an existing account id.
   const [selectedAccountId, setSelectedAccountId] = useState("");
+  const [matchedFromFilename, setMatchedFromFilename] = useState(false);
 
   function reset() {
     setPreview(null);
@@ -63,6 +64,7 @@ export function ImportDialog({ open, onOpenChange }: Props) {
     setDelimiter("");
     setHeaderRow(1);
     setSelectedAccountId("");
+    setMatchedFromFilename(false);
     if (fileRef.current) fileRef.current.value = "";
   }
 
@@ -97,9 +99,11 @@ export function ImportDialog({ open, onOpenChange }: Props) {
     const match = accounts.find((a) => a.name.toLowerCase() === next.suggestedName.toLowerCase());
     if (match) {
       applyExistingAccount(match, text, file.name);
+      setMatchedFromFilename(true);
       return;
     }
     setSelectedAccountId("");
+    setMatchedFromFilename(false);
     setPreview(next);
     setDelimiter(next.delimiter);
     setHeaderRow(next.headerRow);
@@ -136,6 +140,8 @@ export function ImportDialog({ open, onOpenChange }: Props) {
   }
 
   function onAccountPick(value: string) {
+    setMatchedFromFilename(false);
+    setError(null);
     if (value === "") {
       setSelectedAccountId("");
       if (file && fileText) {
@@ -160,6 +166,14 @@ export function ImportDialog({ open, onOpenChange }: Props) {
       setError("Map at least Date, Description, and Amount (or Debit/Credit) before importing.");
       return;
     }
+    const importName = name.trim() || preview.suggestedName;
+    if (!selectedAccountId) {
+      const clash = accounts.find((a) => a.name.toLowerCase() === importName.toLowerCase());
+      if (clash) {
+        setError(`An account named “${clash.name}” already exists. Pick it from the Account list.`);
+        return;
+      }
+    }
     try {
       const result = await importFile({
         file,
@@ -183,6 +197,13 @@ export function ImportDialog({ open, onOpenChange }: Props) {
       setError(err instanceof Error ? err.message : "Import failed.");
     }
   }
+
+  const importName = name.trim() || preview?.suggestedName || "";
+  const nameClash =
+    Boolean(preview) &&
+    !selectedAccountId &&
+    Boolean(importName) &&
+    accounts.some((a) => a.name.toLowerCase() === importName.toLowerCase());
 
   return (
     <Dialog
@@ -331,6 +352,11 @@ export function ImportDialog({ open, onOpenChange }: Props) {
                   One name per card or bank account (e.g. TD credit card). Drop each new
                   statement into the same name so last month&apos;s column mapping fills in.
                 </p>
+                {matchedFromFilename ? (
+                  <p className="text-xs text-muted-foreground">
+                    Matched existing account from filename.
+                  </p>
+                ) : null}
               </div>
               {selectedAccountId ? (
                 <p className="text-sm text-muted-foreground sm:col-span-2">
@@ -359,9 +385,18 @@ export function ImportDialog({ open, onOpenChange }: Props) {
                     <Input
                       id="account-name"
                       value={name}
-                      onChange={(e) => setName(e.target.value)}
+                      onChange={(e) => {
+                        setName(e.target.value);
+                        setError(null);
+                      }}
                       placeholder="e.g. TD credit card"
                     />
+                    {nameClash ? (
+                      <p className="text-xs text-amber-700">
+                        An account named “{importName}” already exists. Pick it from the
+                        Account list to reuse its column mapping.
+                      </p>
+                    ) : null}
                   </div>
                 </>
               )}
@@ -398,7 +433,7 @@ export function ImportDialog({ open, onOpenChange }: Props) {
           </Button>
           <Button
             onClick={confirmImport}
-            disabled={!preview || !mapping || missingPieces(mapping).length > 0}
+            disabled={!preview || !mapping || missingPieces(mapping).length > 0 || nameClash}
           >
             Import transactions
           </Button>
