@@ -186,7 +186,7 @@ describe("saved parser_config overlay", () => {
       amount: null,
       debit: "Column 3",
       credit: "Column 4",
-      category: null,
+      category: "Column 6",
       type: null,
       balance: "Column 5",
     };
@@ -196,6 +196,8 @@ describe("saved parser_config overlay", () => {
     assert.equal(back.debit, "Column 3");
     assert.equal(back.credit, "Column 4");
     assert.equal(back.balance, "Column 5");
+    assert.equal(back.category, "Column 6");
+    assert.equal(config.category_column, "Column 6");
     assert.equal(config.header_row, 0);
   });
 
@@ -252,5 +254,59 @@ describe("saved parser_config overlay", () => {
     assert.equal(next.date, "Date");
     assert.equal(next.description, "Memo");
     assert.equal(next.amount, "Amount");
+  });
+
+  it("clears auto amount when the saved mapping is debit/credit", () => {
+    const auto = {
+      date: "Date",
+      description: "Memo",
+      amount: "Amount",
+      debit: null,
+      credit: null,
+      category: null,
+      type: null,
+      balance: null,
+    };
+    const saved = {
+      date: "Date",
+      description: "Memo",
+      amount: null,
+      debit: "Out",
+      credit: "In",
+      category: null,
+      type: null,
+      balance: null,
+    };
+    const next = overlayMapping(["Date", "Memo", "Amount", "Out", "In"], auto, saved);
+    assert.equal(next.amount, null);
+    assert.equal(next.debit, "Out");
+    assert.equal(next.credit, "In");
+  });
+
+  it("clears auto debit/credit when the saved mapping is signed amount", () => {
+    const auto = {
+      date: "Date",
+      description: "Memo",
+      amount: null,
+      debit: "Withdrawals",
+      credit: "Deposits",
+      category: null,
+      type: null,
+      balance: null,
+    };
+    const saved = {
+      date: "Date",
+      description: "Memo",
+      amount: "Amount",
+      debit: null,
+      credit: null,
+      category: null,
+      type: null,
+      balance: null,
+    };
+    const next = overlayMapping(["Date", "Memo", "Amount", "Withdrawals", "Deposits"], auto, saved);
+    assert.equal(next.amount, "Amount");
+    assert.equal(next.debit, null);
+    assert.equal(next.credit, null);
   });
 });
