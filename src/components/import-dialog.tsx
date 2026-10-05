@@ -45,7 +45,6 @@ export function ImportDialog({ open, onOpenChange }: Props) {
   const [kind, setKind] = useState<AccountKind>("checking");
   const [invert, setInvert] = useState(false);
   const [mapping, setMapping] = useState<ColumnMapping | null>(null);
-  const [showColumnEditor, setShowColumnEditor] = useState(false);
   const [fileText, setFileText] = useState("");
   const [delimiter, setDelimiter] = useState("");
   const [headerRow, setHeaderRow] = useState(1);
@@ -60,7 +59,6 @@ export function ImportDialog({ open, onOpenChange }: Props) {
     setKind("checking");
     setInvert(false);
     setMapping(null);
-    setShowColumnEditor(false);
     setFileText("");
     setDelimiter("");
     setHeaderRow(1);
@@ -369,19 +367,9 @@ export function ImportDialog({ open, onOpenChange }: Props) {
               )}
             </div>
 
-            {mapping && (preview.confidence === "low" || showColumnEditor || Boolean(selectedAccountId)) && (
+            {mapping ? (
               <ColumnRoleTable preview={preview} mapping={mapping} onChange={setMapping} />
-            )}
-
-            {preview.confidence !== "low" && !selectedAccountId && (
-              <button
-                type="button"
-                className="text-xs text-primary underline-offset-4 hover:underline"
-                onClick={() => setShowColumnEditor((v) => !v)}
-              >
-                {showColumnEditor ? "Hide column mapping" : "Adjust column mapping"}
-              </button>
-            )}
+            ) : null}
 
             <label className="flex items-start gap-2 text-sm">
               <input
