@@ -121,10 +121,56 @@ export function parserConfigFromMapping(
     config.amount_column = mapping.amount;
   }
   if (mapping.type) config.type_column = mapping.type;
-  // Recorded for completeness; the parser never reads it, so a balance column
-  // can never leak into amounts at commit time.
+  // Recorded for completeness; the parser never reads these, so a balance or
+  // bank-category column can never leak into amounts at commit time.
   if (mapping.balance) config.balance_column = mapping.balance;
+  if (mapping.category) config.category_column = mapping.category;
   return config;
+}
+
+function configString(config: Record<string, unknown>, key: string): string | null {
+  const value = config[key];
+  return typeof value === "string" && value ? value : null;
+}
+
+export function mappingFromParserConfig(config: Record<string, unknown> | null | undefined): ColumnMapping {
+  const c = config ?? {};
+  return {
+    date: configString(c, "date_column"),
+    description: configString(c, "description_column"),
+    amount: configString(c, "amount_column"),
+    debit: configString(c, "debit_column"),
+    credit: configString(c, "credit_column"),
+    category: configString(c, "category_column"),
+    type: configString(c, "type_column"),
+    balance: configString(c, "balance_column"),
+  };
+}
+
+/** Overlay a saved mapping onto the current file's headers. Saved roles whose
+ *  headers exist win (and evict conflicting auto-detect roles); missing headers
+ *  keep the auto-detect fallback. Amount vs debit/credit is exclusive: a saved
+ *  debit/credit mapping clears auto amount (and the reverse), even when the
+ *  unused role was stored as null. */
+export function overlayMapping(headers: string[], auto: ColumnMapping, saved: ColumnMapping): ColumnMapping {
+  const next = { ...auto };
+  for (const [role, header] of Object.entries(saved) as [keyof ColumnMapping, string | null][]) {
+    if (!header || !headers.includes(header)) continue;
+    for (const key of Object.keys(next) as (keyof ColumnMapping)[]) {
+      if (next[key] === header) next[key] = null;
+    }
+    next[role] = header;
+  }
+  const savedDebitCredit =
+    (saved.debit != null && next.debit === saved.debit) ||
+    (saved.credit != null && next.credit === saved.credit);
+  const savedAmount = saved.amount != null && next.amount === saved.amount;
+  if (savedDebitCredit) next.amount = null;
+  if (savedAmount) {
+    next.debit = null;
+    next.credit = null;
+  }
+  return next;
 }
 
 export const api = {
