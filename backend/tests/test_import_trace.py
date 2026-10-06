@@ -44,7 +44,7 @@ def test_commit_trace_counts_unrecognized_dates(client):
         "/api/accounts",
         json={
             "name": "Test Card",
-            "institution": "generic",
+            "institution": "other",
             "account_type": "credit_card",
             "parser_config": PARSER_CONFIG,
         },
