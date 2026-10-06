@@ -5,6 +5,7 @@ import { Download } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { api, API_URL, type ApiImport } from "@/lib/api";
 import type { Account } from "@/lib/types";
+import { ImportTracePanel } from "@/components/import-trace-panel";
 
 type Props = {
   open: boolean;
@@ -22,12 +23,14 @@ function formatDate(value: string): string {
 export function DataFilesDialog({ open, onOpenChange, accounts }: Props) {
   const [imports, setImports] = useState<ApiImport[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [lastTrace, setLastTrace] = useState<Record<string, unknown> | null | undefined>(undefined);
 
   function handleOpenChange(next: boolean) {
     // Reset here (not in the effect) so the fresh fetch starts clean on reopen.
     if (!next) {
       setImports(null);
       setError(null);
+      setLastTrace(undefined);
     }
     onOpenChange(next);
   }
@@ -43,6 +46,14 @@ export function DataFilesDialog({ open, onOpenChange, accounts }: Props) {
       .catch((err) => {
         if (!cancelled) setError(err instanceof Error ? err.message : "Could not load imports.");
       });
+    api
+      .getLastImportTrace()
+      .then((trace) => {
+        if (!cancelled) setLastTrace(trace);
+      })
+      .catch(() => {
+        if (!cancelled) setLastTrace(null);
+      });
     return () => {
       cancelled = true;
     };
@@ -52,7 +63,7 @@ export function DataFilesDialog({ open, onOpenChange, accounts }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-xl">
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Data files</DialogTitle>
           <DialogDescription>
@@ -61,6 +72,14 @@ export function DataFilesDialog({ open, onOpenChange, accounts }: Props) {
             files survive a database reset.
           </DialogDescription>
         </DialogHeader>
+
+        {lastTrace ? (
+          <ImportTracePanel trace={lastTrace} title="Last import trace" />
+        ) : lastTrace === null ? (
+          <p className="text-xs text-muted-foreground">
+            No import trace yet. After you import a CSV, a copy-paste debug blob shows up here.
+          </p>
+        ) : null}
 
         {error ? (
           <p className="text-sm text-destructive">{error}</p>

@@ -80,12 +80,14 @@ class ImportPreviewResponse(BaseModel):
     status: ImportStatus
     transactions: list[ParsedTransactionPreview]
     skipped_duplicates: int
+    import_trace: dict[str, Any] | None = None
 
 
 class ImportCommitResponse(BaseModel):
     import_id: int
     committed_count: int
     skipped_duplicates: int
+    import_trace: dict[str, Any] | None = None
 
 
 class ImportRead(BaseModel):

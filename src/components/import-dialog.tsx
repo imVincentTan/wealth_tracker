@@ -20,6 +20,7 @@ import type { Account, AccountKind, ColumnMapping, ImportPreview } from "@/lib/t
 import { ACCOUNT_KINDS } from "@/lib/types";
 import { FileSpreadsheet, Upload } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ImportTracePanel } from "@/components/import-trace-panel";
 
 const KIND_LABEL: Record<AccountKind, string> = {
   checking: "Checking",
@@ -51,6 +52,10 @@ export function ImportDialog({ open, onOpenChange }: Props) {
   // "" = create a new account; otherwise an existing account id.
   const [selectedAccountId, setSelectedAccountId] = useState("");
   const [matchedFromFilename, setMatchedFromFilename] = useState(false);
+  const [zeroResult, setZeroResult] = useState<{
+    skipped: number;
+    trace: Record<string, unknown> | null;
+  } | null>(null);
 
   function reset() {
     setPreview(null);
@@ -65,6 +70,7 @@ export function ImportDialog({ open, onOpenChange }: Props) {
     setHeaderRow(1);
     setSelectedAccountId("");
     setMatchedFromFilename(false);
+    setZeroResult(null);
     if (fileRef.current) fileRef.current.value = "";
   }
 
@@ -185,7 +191,17 @@ export function ImportDialog({ open, onOpenChange }: Props) {
         // so the commit-time backend parse matches what the user approved.
         delimiter: preview.delimiter,
         headerRow,
+        clientPreviewRowCount: preview.rows.length,
       });
+      if (result.added === 0) {
+        toast.warning(
+          result.skipped
+            ? `Imported 0 transactions (${result.skipped} already in the ledger). Copy the import trace below if this looks wrong.`
+            : "Imported 0 transactions. Copy the import trace below to debug."
+        );
+        setZeroResult({ skipped: result.skipped, trace: result.importTrace });
+        return;
+      }
       toast.success(
         result.skipped
           ? `Imported ${result.added} transactions (${result.skipped} already in the ledger).`
@@ -215,9 +231,11 @@ export function ImportDialog({ open, onOpenChange }: Props) {
     >
       <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Import a statement</DialogTitle>
+          <DialogTitle>{zeroResult ? "Nothing imported" : "Import a statement"}</DialogTitle>
           <DialogDescription>
-            CSV from a credit card or checking account. The file is stored only on this computer.
+            {zeroResult
+              ? "Copy the trace below and paste it into a chat if you want help figuring out why."
+              : "CSV from a credit card or checking account. The file is stored only on this computer."}
           </DialogDescription>
         </DialogHeader>
 
@@ -232,7 +250,23 @@ export function ImportDialog({ open, onOpenChange }: Props) {
           }}
         />
 
-        {!preview ? (
+        {zeroResult ? (
+          <div className="space-y-3">
+            <p className="text-sm">
+              {zeroResult.skipped
+                ? `Imported 0 transactions (${zeroResult.skipped} already in the ledger).`
+                : "Imported 0 transactions. The preview had rows, but the server skipped them."}
+            </p>
+            {zeroResult.trace ? (
+              <ImportTracePanel
+                trace={zeroResult.trace}
+                title="Copy this trace to debug"
+              />
+            ) : (
+              <p className="text-sm text-muted-foreground">No import trace was saved.</p>
+            )}
+          </div>
+        ) : !preview ? (
           <div
             role="button"
             tabIndex={0}
@@ -428,15 +462,33 @@ export function ImportDialog({ open, onOpenChange }: Props) {
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button
-            onClick={confirmImport}
-            disabled={!preview || !mapping || missingPieces(mapping).length > 0 || nameClash}
-          >
-            Import transactions
-          </Button>
+          {zeroResult ? (
+            <>
+              <Button variant="outline" onClick={reset}>
+                Try another file
+              </Button>
+              <Button
+                onClick={() => {
+                  reset();
+                  onOpenChange(false);
+                }}
+              >
+                Done
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="outline" onClick={() => onOpenChange(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={confirmImport}
+                disabled={!preview || !mapping || missingPieces(mapping).length > 0 || nameClash}
+              >
+                Import transactions
+              </Button>
+            </>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

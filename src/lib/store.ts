@@ -13,7 +13,12 @@ import {
 import { CHASE_CHECKING_CSV, CHASE_CREDIT_CSV } from "./sample";
 import type { Account, AccountKind, CategoryId, ColumnMapping, Transaction } from "./types";
 
-type ImportResult = { added: number; skipped: number; accountId: string };
+type ImportResult = {
+  added: number;
+  skipped: number;
+  accountId: string;
+  importTrace: Record<string, unknown> | null;
+};
 
 type LedgerState = {
   ready: boolean;
@@ -29,6 +34,7 @@ type LedgerState = {
     invertAmounts: boolean;
     delimiter?: string;
     headerRow?: number;
+    clientPreviewRowCount?: number;
   }) => Promise<ImportResult>;
   loadSample: () => Promise<ImportResult>;
   setCategory: (id: string, category: CategoryId, applyToMerchant: boolean) => Promise<void>;
@@ -104,18 +110,32 @@ export const useLedger = create<LedgerState>((set, get) => ({
       });
     }
   },
-  importFile: async ({ file, name, kind, mapping, invertAmounts, delimiter, headerRow }) => {
+  importFile: async ({
+    file,
+    name,
+    kind,
+    mapping,
+    invertAmounts,
+    delimiter,
+    headerRow,
+    clientPreviewRowCount,
+  }) => {
     const accountId = await ensureAccount(name, kind, mapping, invertAmounts, get().accounts, {
       delimiter,
       headerRow,
     });
-    const preview = await api.previewImport(accountId, file);
+    const preview = await api.previewImport(accountId, file, { clientPreviewRowCount });
     const committed = await api.commitImport(preview.import_id);
     await get().refresh();
+    const importTrace = {
+      ...(committed.import_trace ?? preview.import_trace ?? {}),
+      ...(clientPreviewRowCount != null ? { client_preview_row_count: clientPreviewRowCount } : {}),
+    };
     return {
       added: committed.committed_count,
       skipped: committed.skipped_duplicates,
       accountId: String(accountId),
+      importTrace: Object.keys(importTrace).length ? importTrace : null,
     };
   },
   loadSample: async () => {
@@ -157,6 +177,7 @@ export const useLedger = create<LedgerState>((set, get) => ({
       added: first.added + second.added,
       skipped: first.skipped + second.skipped,
       accountId: second.accountId,
+      importTrace: second.importTrace,
     };
   },
   setCategory: async (id, category, applyToMerchant) => {
