@@ -65,6 +65,7 @@ def build_import_trace(
     client_preview_row_count: int | None = None,
     extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    # skipped_duplicates is counted later at commit via dedup_hash, not during parse.
     skip_counts = {
         "unrecognized_date": 0,
         "empty_description": 0,

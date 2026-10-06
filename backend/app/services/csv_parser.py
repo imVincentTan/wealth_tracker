@@ -99,16 +99,19 @@ class ParseStats:
     skip_counts: dict[str, int] = field(
         default_factory=lambda: {reason: 0 for reason in SKIP_REASONS}
     )
-    skip_samples: list[dict[str, str]] = field(default_factory=list)
+    skip_samples: list[dict[str, Any]] = field(default_factory=list)
     parser_config: dict[str, Any] = field(default_factory=dict)
 
-    def record_skip(self, reason: str, raw_date: str, raw_amount: str) -> None:
+    def record_skip(
+        self, reason: str, raw_date: str, raw_amount: str, *, row_number: int
+    ) -> None:
         self.skip_counts[reason] = self.skip_counts.get(reason, 0) + 1
         if len(self.skip_samples) >= MAX_SKIP_SAMPLES:
             return
         self.skip_samples.append(
             {
                 "reason": reason,
+                "row_number": row_number,
                 "raw_date": raw_date,
                 "raw_amount": raw_amount,
             }
@@ -324,23 +327,23 @@ def parse_csv_rows(
         raw_date = row.get(date_col, "") or ""
         raw_amount = _raw_amount_string(row, effective)
         if not description:
-            stats.record_skip("empty_description", raw_date, raw_amount)
+            stats.record_skip("empty_description", raw_date, raw_amount, row_number=row_number)
             continue
 
         try:
             txn_date = _parse_date(row.get(date_col, ""), effective.get("date_format"))
         except (ValueError, TypeError):
-            stats.record_skip("unrecognized_date", raw_date, raw_amount)
+            stats.record_skip("unrecognized_date", raw_date, raw_amount, row_number=row_number)
             continue
 
         try:
             amount = _amount_from_row(row, effective)
         except (ValueError, TypeError):
-            stats.record_skip("other_parse_error", raw_date, raw_amount)
+            stats.record_skip("other_parse_error", raw_date, raw_amount, row_number=row_number)
             continue
 
         if amount == 0:
-            stats.record_skip("zero_amount", raw_date, raw_amount)
+            stats.record_skip("zero_amount", raw_date, raw_amount, row_number=row_number)
             continue
 
         amount_cad = amount if currency.upper() == "CAD" else amount

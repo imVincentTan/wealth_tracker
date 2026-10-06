@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Check, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -11,13 +11,25 @@ type Props = {
 
 export function ImportTracePanel({ trace, title = "Import trace" }: Props) {
   const [copied, setCopied] = useState(false);
+  const copiedTimer = useRef<number | null>(null);
   const json = JSON.stringify(trace, null, 2);
+
+  useEffect(() => {
+    return () => {
+      if (copiedTimer.current != null) window.clearTimeout(copiedTimer.current);
+    };
+  }, []);
+
+  function markCopied() {
+    setCopied(true);
+    if (copiedTimer.current != null) window.clearTimeout(copiedTimer.current);
+    copiedTimer.current = window.setTimeout(() => setCopied(false), 2000);
+  }
 
   async function copy() {
     try {
       await navigator.clipboard.writeText(json);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 2000);
+      markCopied();
     } catch {
       const area = document.createElement("textarea");
       area.value = json;
@@ -25,8 +37,7 @@ export function ImportTracePanel({ trace, title = "Import trace" }: Props) {
       area.select();
       document.execCommand("copy");
       area.remove();
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 2000);
+      markCopied();
     }
   }
 

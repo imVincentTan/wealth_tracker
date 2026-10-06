@@ -29,6 +29,45 @@ const KIND_LABEL: Record<AccountKind, string> = {
   other: "Other",
 };
 
+const PARSE_SKIP_REASONS = [
+  "unrecognized_date",
+  "empty_description",
+  "zero_amount",
+  "other_parse_error",
+] as const;
+
+type ImportOutcome = {
+  added: number;
+  skipped: number;
+  parseSkips: number;
+  trace: Record<string, unknown> | null;
+};
+
+function parseSkipTotal(trace: Record<string, unknown> | null | undefined): number {
+  const counts = trace?.skip_counts;
+  if (!counts || typeof counts !== "object") return 0;
+  const record = counts as Record<string, unknown>;
+  return PARSE_SKIP_REASONS.reduce((sum, reason) => {
+    const value = record[reason];
+    return sum + (typeof value === "number" ? value : 0);
+  }, 0);
+}
+
+function importOutcomeSummary(outcome: ImportOutcome): string {
+  const extras: string[] = [];
+  if (outcome.parseSkips) {
+    extras.push(
+      `${outcome.parseSkips} row${outcome.parseSkips === 1 ? "" : "s"} skipped while parsing`,
+    );
+  }
+  if (outcome.skipped) {
+    extras.push(`${outcome.skipped} already in the ledger`);
+  }
+  const imported = `Imported ${outcome.added} transaction${outcome.added === 1 ? "" : "s"}`;
+  if (extras.length) return `${imported} (${extras.join("; ")}).`;
+  return "Imported 0 transactions. The preview had rows, but the server skipped them.";
+}
+
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -52,10 +91,7 @@ export function ImportDialog({ open, onOpenChange }: Props) {
   // "" = create a new account; otherwise an existing account id.
   const [selectedAccountId, setSelectedAccountId] = useState("");
   const [matchedFromFilename, setMatchedFromFilename] = useState(false);
-  const [zeroResult, setZeroResult] = useState<{
-    skipped: number;
-    trace: Record<string, unknown> | null;
-  } | null>(null);
+  const [importOutcome, setImportOutcome] = useState<ImportOutcome | null>(null);
 
   function reset() {
     setPreview(null);
@@ -70,7 +106,7 @@ export function ImportDialog({ open, onOpenChange }: Props) {
     setHeaderRow(1);
     setSelectedAccountId("");
     setMatchedFromFilename(false);
-    setZeroResult(null);
+    setImportOutcome(null);
     if (fileRef.current) fileRef.current.value = "";
   }
 
@@ -193,13 +229,18 @@ export function ImportDialog({ open, onOpenChange }: Props) {
         headerRow,
         clientPreviewRowCount: preview.rows.length,
       });
-      if (result.added === 0) {
+      const parseSkips = parseSkipTotal(result.importTrace);
+      if (result.added === 0 || parseSkips > 0) {
+        const outcome: ImportOutcome = {
+          added: result.added,
+          skipped: result.skipped,
+          parseSkips,
+          trace: result.importTrace,
+        };
         toast.warning(
-          result.skipped
-            ? `Imported 0 transactions (${result.skipped} already in the ledger). Copy the import trace below if this looks wrong.`
-            : "Imported 0 transactions. Copy the import trace below to debug."
+          `${importOutcomeSummary(outcome)} Copy the import trace below if this looks wrong.`,
         );
-        setZeroResult({ skipped: result.skipped, trace: result.importTrace });
+        setImportOutcome(outcome);
         return;
       }
       toast.success(
@@ -231,9 +272,15 @@ export function ImportDialog({ open, onOpenChange }: Props) {
     >
       <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{zeroResult ? "Nothing imported" : "Import a statement"}</DialogTitle>
+          <DialogTitle>
+            {importOutcome
+              ? importOutcome.added === 0
+                ? "Nothing imported"
+                : "Some rows were skipped"
+              : "Import a statement"}
+          </DialogTitle>
           <DialogDescription>
-            {zeroResult
+            {importOutcome
               ? "Copy the trace below and paste it into a chat if you want help figuring out why."
               : "CSV from a credit card or checking account. The file is stored only on this computer."}
           </DialogDescription>
@@ -250,16 +297,12 @@ export function ImportDialog({ open, onOpenChange }: Props) {
           }}
         />
 
-        {zeroResult ? (
+        {importOutcome ? (
           <div className="space-y-3">
-            <p className="text-sm">
-              {zeroResult.skipped
-                ? `Imported 0 transactions (${zeroResult.skipped} already in the ledger).`
-                : "Imported 0 transactions. The preview had rows, but the server skipped them."}
-            </p>
-            {zeroResult.trace ? (
+            <p className="text-sm">{importOutcomeSummary(importOutcome)}</p>
+            {importOutcome.trace ? (
               <ImportTracePanel
-                trace={zeroResult.trace}
+                trace={importOutcome.trace}
                 title="Copy this trace to debug"
               />
             ) : (
@@ -462,7 +505,7 @@ export function ImportDialog({ open, onOpenChange }: Props) {
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
         <DialogFooter>
-          {zeroResult ? (
+          {importOutcome ? (
             <>
               <Button variant="outline" onClick={reset}>
                 Try another file

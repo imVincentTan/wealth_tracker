@@ -139,32 +139,56 @@ def test_parse_date_named_and_numeric_formats(raw, expected):
     assert _parse_date(raw, "%m/%d/%Y") == expected
 
 
+SIGNED = {
+    "date_column": "Date",
+    "description_column": "Description",
+    "amount_mode": "signed",
+    "amount_column": "Amount",
+    "date_format": "%m/%d/%Y",
+}
+
+
 def test_unrecognized_date_is_counted_not_parsed():
-    """JS Date.parse accepts '26 Sep 2026'; the backend parser currently does not."""
+    # Do not use Amex "26 Sep 2026" as a skip fixture — that is a real statement
+    # format the backend parser also accepts. Garbage like 99/99/9999 stays invalid.
     content = (
         "Date,Description,Amount\n"
-        "26 Sep 2026,AMEX STORE,-12.34\n"
+        "99/99/9999,UNKNOWN STORE,-12.34\n"
         "09/15/2026,COFFEE,-4.50\n"
     )
-    rows, stats = parse_csv_rows(
-        content,
-        {
-            "date_column": "Date",
-            "description_column": "Description",
-            "amount_mode": "signed",
-            "amount_column": "Amount",
-            "date_format": "%m/%d/%Y",
-        },
-        account_id=1,
-    )
+    rows, stats = parse_csv_rows(content, SIGNED, account_id=1)
     assert len(rows) == 1
     assert stats.parsed_row_count == 1
     assert rows[0]["description"] == "COFFEE"
     assert stats.skip_counts["unrecognized_date"] == 1
     assert stats.file_data_row_count == 2
     assert stats.csv_headers == ["Date", "Description", "Amount"]
-    assert any(s["raw_date"] == "26 Sep 2026" for s in stats.skip_samples)
-    sample = next(s for s in stats.skip_samples if s["raw_date"] == "26 Sep 2026")
+    sample = next(s for s in stats.skip_samples if s["raw_date"] == "99/99/9999")
     assert sample["reason"] == "unrecognized_date"
     assert sample["raw_amount"] == "-12.34"
-    assert "AMEX STORE" not in sample.values()
+    assert sample["row_number"] == 2
+    assert "UNKNOWN STORE" not in sample.values()
+
+
+def test_empty_description_zero_amount_and_bad_amount_are_counted():
+    content = (
+        "Date,Description,Amount\n"
+        "09/15/2026,,-4.50\n"
+        "09/16/2026,ZERO,0.00\n"
+        "09/17/2026,BAD AMOUNT,not-a-number\n"
+        "not-a-date,STILL HAS DESC,-1.00\n"
+        "09/18/2026,COFFEE,-4.50\n"
+    )
+    rows, stats = parse_csv_rows(content, SIGNED, account_id=1)
+    assert [r["description"] for r in rows] == ["COFFEE"]
+    assert stats.skip_counts["empty_description"] == 1
+    assert stats.skip_counts["zero_amount"] == 1
+    assert stats.skip_counts["other_parse_error"] == 1
+    assert stats.skip_counts["unrecognized_date"] == 1
+    by_reason = {s["reason"]: s for s in stats.skip_samples}
+    assert by_reason["empty_description"]["row_number"] == 2
+    assert by_reason["zero_amount"]["row_number"] == 3
+    assert by_reason["other_parse_error"]["row_number"] == 4
+    assert by_reason["unrecognized_date"]["raw_date"] == "not-a-date"
+    assert by_reason["unrecognized_date"]["row_number"] == 5
+    assert "BAD AMOUNT" not in by_reason["other_parse_error"].values()

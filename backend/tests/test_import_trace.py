@@ -10,9 +10,10 @@ from app.database import Base, engine
 from app.main import app
 from app.services.import_trace import last_trace_path
 
+# Permanently invalid date — not Amex "26 Sep 2026", which is a real format.
 CSV_MIXED = (
     "Date,Description,Amount\n"
-    "26 Sep 2026,AMEX STORE,-12.34\n"
+    "99/99/9999,UNKNOWN STORE,-12.34\n"
     "09/15/2026,COFFEE,-4.50\n"
 )
 PARSER_CONFIG = {
@@ -42,8 +43,8 @@ def test_commit_trace_counts_unrecognized_dates(client):
     created = client.post(
         "/api/accounts",
         json={
-            "name": "Amex Card",
-            "institution": "amex",
+            "name": "Test Card",
+            "institution": "generic",
             "account_type": "credit_card",
             "parser_config": PARSER_CONFIG,
         },
@@ -54,7 +55,7 @@ def test_commit_trace_counts_unrecognized_dates(client):
     preview = client.post(
         "/api/imports/preview",
         data={"account_id": str(account_id), "client_preview_row_count": "2"},
-        files={"file": ("amex.csv", CSV_MIXED, "text/csv")},
+        files={"file": ("mixed.csv", CSV_MIXED, "text/csv")},
     )
     assert preview.status_code == 200, preview.text
     body = preview.json()
@@ -64,7 +65,10 @@ def test_commit_trace_counts_unrecognized_dates(client):
     assert trace["skip_counts"]["unrecognized_date"] == 1
     assert trace["client_preview_row_count"] == 2
     assert trace["preview"]["status"] == 200
-    assert any(s["raw_date"] == "26 Sep 2026" for s in trace["skip_samples"])
+    sample = next(s for s in trace["skip_samples"] if s["raw_date"] == "99/99/9999")
+    assert sample["reason"] == "unrecognized_date"
+    assert sample["row_number"] == 2
+    assert "UNKNOWN STORE" not in sample.values()
 
     commit = client.post(f"/api/imports/{body['import_id']}/commit")
     assert commit.status_code == 200, commit.text
@@ -79,6 +83,6 @@ def test_commit_trace_counts_unrecognized_dates(client):
 
     stored = client.get("/api/imports/last-trace")
     assert stored.status_code == 200
-    assert stored.json()["filename"] == "amex.csv"
+    assert stored.json()["filename"] == "mixed.csv"
     assert last_trace_path() == Path(settings.data_dir) / "last_import_trace.json"
     assert last_trace_path().is_file()
