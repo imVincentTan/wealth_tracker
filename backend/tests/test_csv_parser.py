@@ -1,8 +1,10 @@
 """Tests for the authoritative backend CSV parse (the commit-time source of truth)."""
 
+from datetime import date
+
 import pytest
 
-from app.services.csv_parser import parse_csv_rows
+from app.services.csv_parser import _parse_date, parse_csv_rows
 
 
 def test_signed_amount_with_header_row_1():
@@ -95,3 +97,43 @@ def test_duplicate_headers_are_uniquified():
             {"date_column": "Date", "description_column": "Description"},
             account_id=1,
         )
+
+
+def test_amex_named_month_dates_parse_with_mdy_date_format():
+    """Amex CSVs use '26 Sep 2026'; the UI still sends date_format=%m/%d/%Y."""
+    content = (
+        "Date,Date Processed,Description,Amount,Foreign Spend Amount,Commission,"
+        "Exchange Rate,Additional Information,Merchant,Address,City / Province,"
+        "Postal Code,Country,Reference\n"
+        "26 Sep 2026,26 Sep 2026,redacted,15.99,,,,,redacted,,,,,'redacted'\n"
+    )
+    config = {
+        "date_column": "Date",
+        "description_column": "Description",
+        "amount_mode": "signed",
+        "amount_column": "Amount",
+        "date_format": "%m/%d/%Y",
+        "header_row": 1,
+    }
+    rows = parse_csv_rows(content, config, account_id=1)
+    assert len(rows) == 1
+    assert rows[0]["transaction_date"] == date(2026, 9, 26)
+    assert rows[0]["amount"] == 15.99
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        ("26 Sep 2026", date(2026, 9, 26)),
+        ("26 September 2026", date(2026, 9, 26)),
+        ("26-Sep-2026", date(2026, 9, 26)),
+        ("Sep 26, 2026", date(2026, 9, 26)),
+        ("09/15/2026", date(2026, 9, 15)),
+        ("2026-09-15", date(2026, 9, 15)),
+        ("15/09/2026", date(2026, 9, 15)),
+        ("2026/09/15", date(2026, 9, 15)),
+        ("09-15-2026", date(2026, 9, 15)),
+    ],
+)
+def test_parse_date_named_and_numeric_formats(raw, expected):
+    assert _parse_date(raw, "%m/%d/%Y") == expected
