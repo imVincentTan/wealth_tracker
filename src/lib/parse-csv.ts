@@ -43,6 +43,21 @@ const BALANCE_HEADERS = [
   "ledger balance",
 ];
 
+function uniquifyHeaders(headers: string[]): string[] {
+  const used = new Set<string>();
+  return headers.map((raw, i) => {
+    const base = raw.trim() || `Column ${i + 1}`;
+    let name = base;
+    let n = 2;
+    while (used.has(name)) {
+      name = `${base} (${n})`;
+      n += 1;
+    }
+    used.add(name);
+    return name;
+  });
+}
+
 function normHeader(h: string): string {
   return h.replace(/^\uFEFF/, "").trim().toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
@@ -243,7 +258,7 @@ export function parseCsvText(text: string, fileName: string, options: ParseOptio
     headers = Array.from({ length: width }, (_, i) => `Column ${i + 1}`);
     dataRows = allRows;
   } else {
-    headers = (allRows[headerRow - 1] ?? []).map((h) => h.trim());
+    headers = uniquifyHeaders((allRows[headerRow - 1] ?? []).map((h) => h.trim()));
     dataRows = allRows.slice(headerRow);
   }
   const rows = dataRows.map((cells) =>

@@ -532,9 +532,9 @@ function ColumnRoleTable({
           <tbody>
             {rows.map((row, i) => (
               <tr key={i} className="border-t">
-                {preview.headers.map((h) => (
+                {preview.headers.map((h, col) => (
                   <td
-                    key={h}
+                    key={`${col}-${h}`}
                     className="max-w-40 truncate px-3 py-1.5 text-muted-foreground"
                     title={row[h]}
                   >

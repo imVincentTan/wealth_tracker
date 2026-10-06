@@ -176,6 +176,15 @@ describe("headerless and separator handling", () => {
     assert.deepEqual(preview.headers, ["Date", "Description", "Amount"]);
     assert.equal(preview.rows.length, 1);
   });
+
+  it("gives duplicate headers distinct names so each can hold its own role", () => {
+    const csv = "Date,Description,Amount,Amount\n09/15/2026,COFFEE,10.00,20.00\n";
+    const preview = parseCsvText(csv, "dup.csv");
+    assert.deepEqual(preview.headers, ["Date", "Description", "Amount", "Amount (2)"]);
+    assert.equal(preview.rows[0]["Amount"], "10.00");
+    assert.equal(preview.rows[0]["Amount (2)"], "20.00");
+    assert.equal(preview.mapping.amount, "Amount");
+  });
 });
 
 describe("saved parser_config overlay", () => {

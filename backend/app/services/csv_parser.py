@@ -119,6 +119,22 @@ def detect_parser_config(fieldnames: list[str], filename: str = "") -> dict[str,
     return {k: v for k, v in config.items() if v not in (None, "")}
 
 
+def uniquify_headers(names: list[str]) -> list[str]:
+    """Make header names unique so two 'Amount' columns don't collapse in the row dict."""
+    used: set[str] = set()
+    out: list[str] = []
+    for i, raw in enumerate(names):
+        base = str(raw).strip() or f"Column {i + 1}"
+        name = base
+        n = 2
+        while name in used:
+            name = f"{base} ({n})"
+            n += 1
+        used.add(name)
+        out.append(name)
+    return out
+
+
 def _read_rows(cleaned: str, delimiter: str | None) -> list[list[str]]:
     if not delimiter:
         try:
@@ -154,7 +170,7 @@ def parse_csv_rows(
     else:
         if len(all_rows) < header_row:
             raise ValueError(f"header_row is {header_row} but the CSV has {len(all_rows)} rows")
-        fieldnames = [str(c).strip() for c in all_rows[header_row - 1]]
+        fieldnames = uniquify_headers([str(c) for c in all_rows[header_row - 1]])
         data_rows = all_rows[header_row:]
         first_data_row_number = header_row + 1
 
