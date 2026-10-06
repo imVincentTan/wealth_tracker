@@ -73,7 +73,22 @@ def test_header_row_beyond_file_raises():
         parse_csv_rows("a,b,c\n", {"header_row": 5}, account_id=1)
 
 
-def test_unmappable_columns_raise():
+def test_duplicate_headers_are_uniquified():
+    content = "Date,Description,Amount,Amount\n09/15/2026,COFFEE,10.00,20.00\n"
+    rows = parse_csv_rows(
+        content,
+        {
+            "date_column": "Date",
+            "description_column": "Description",
+            "amount_mode": "signed",
+            "amount_column": "Amount (2)",
+            "date_format": "%m/%d/%Y",
+        },
+        account_id=1,
+    )
+    assert rows[0]["amount"] == 20.00
+    assert rows[0]["raw_data"]["Amount"] == "10.00"
+    assert rows[0]["raw_data"]["Amount (2)"] == "20.00"
     with pytest.raises(ValueError, match="Expected columns"):
         parse_csv_rows(
             "Foo,Bar\n1,2\n",
