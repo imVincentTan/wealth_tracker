@@ -7,6 +7,75 @@ from typing import Any
 
 from app.models import TransactionType
 
+# English month names only — never %b/%B, which depend on the process locale.
+_MONTH_NAME_TO_NUM = {
+    "jan": 1,
+    "january": 1,
+    "feb": 2,
+    "february": 2,
+    "mar": 3,
+    "march": 3,
+    "apr": 4,
+    "april": 4,
+    "may": 5,
+    "jun": 6,
+    "june": 6,
+    "jul": 7,
+    "july": 7,
+    "aug": 8,
+    "august": 8,
+    "sep": 9,
+    "sept": 9,
+    "september": 9,
+    "oct": 10,
+    "october": 10,
+    "nov": 11,
+    "november": 11,
+    "dec": 12,
+    "december": 12,
+}
+
+
+def _expand_year(year: int) -> int:
+    if year < 100:
+        return 1900 + year if year > 70 else 2000 + year
+    return year
+
+
+def _parse_named_month_date(value: str) -> date | None:
+    """Parse day-month-year or month-day-year with an English month name.
+
+    Accepts Amex-style values such as ``26 Sep 2026``, ``26 September 2026``,
+    ``26-Sep-2026``, and ``Sep 26, 2026``.
+    """
+    normalized = re.sub(r"[,.]", " ", value)
+    normalized = re.sub(r"[/\-]", " ", normalized)
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    parts = normalized.split(" ")
+    if len(parts) != 3:
+        return None
+
+    def month_num(token: str) -> int | None:
+        return _MONTH_NAME_TO_NUM.get(token.lower())
+
+    day: int | None = None
+    month: int | None = None
+    year: int | None = None
+
+    middle_month = month_num(parts[1])
+    leading_month = month_num(parts[0])
+    if middle_month is not None and parts[0].isdigit() and parts[2].isdigit():
+        day, month, year = int(parts[0]), middle_month, _expand_year(int(parts[2]))
+    elif leading_month is not None and parts[1].isdigit() and parts[2].isdigit():
+        month, day, year = leading_month, int(parts[1]), _expand_year(int(parts[2]))
+    else:
+        return None
+
+    try:
+        return date(year, month, day)
+    except ValueError:
+        return None
+
 
 def _parse_date(value: str, fmt: str | None = None) -> date:
     value = value.strip()
@@ -18,6 +87,9 @@ def _parse_date(value: str, fmt: str | None = None) -> date:
             return datetime.strptime(value, pattern).date()
         except ValueError:
             continue
+    named = _parse_named_month_date(value)
+    if named is not None:
+        return named
     raise ValueError(f"Unrecognized date format: {value}")
 
 

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { categorize, extractMerchant } from "./categorize";
 import { parseMoney } from "./money";
-import { accountIdFromName, parseCsvText, rowsToTransactions } from "./parse-csv";
+import { accountIdFromName, parseCsvText, parseDate, rowsToTransactions } from "./parse-csv";
 import { buildReport } from "./reports";
 import { CHASE_CHECKING_CSV, CHASE_CREDIT_CSV } from "./sample";
 import { mappingFromParserConfig, overlayMapping, parserConfigFromMapping } from "./api";
@@ -13,6 +13,20 @@ describe("parseMoney", () => {
     assert.equal(parseMoney("(12.00)"), -12);
     assert.equal(parseMoney(" -8.20 "), -8.2);
     assert.equal(parseMoney(""), null);
+  });
+});
+
+describe("parseDate", () => {
+  it("parses Amex day-month-year with an English month name", () => {
+    assert.equal(parseDate("26 Sep 2026"), "2026-09-26");
+    assert.equal(parseDate("26 September 2026"), "2026-09-26");
+    assert.equal(parseDate("26-Sep-2026"), "2026-09-26");
+    assert.equal(parseDate("Sep 26, 2026"), "2026-09-26");
+  });
+
+  it("still parses numeric dates", () => {
+    assert.equal(parseDate("09/15/2026"), "2026-09-15");
+    assert.equal(parseDate("2026-09-15"), "2026-09-15");
   });
 });
 
