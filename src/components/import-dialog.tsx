@@ -45,7 +45,6 @@ export function ImportDialog({ open, onOpenChange }: Props) {
   const [kind, setKind] = useState<AccountKind>("checking");
   const [invert, setInvert] = useState(false);
   const [mapping, setMapping] = useState<ColumnMapping | null>(null);
-  const [showColumnEditor, setShowColumnEditor] = useState(false);
   const [fileText, setFileText] = useState("");
   const [delimiter, setDelimiter] = useState("");
   const [headerRow, setHeaderRow] = useState(1);
@@ -61,7 +60,6 @@ export function ImportDialog({ open, onOpenChange }: Props) {
     setKind("checking");
     setInvert(false);
     setMapping(null);
-    setShowColumnEditor(false);
     setFileText("");
     setDelimiter("");
     setHeaderRow(1);
@@ -404,19 +402,9 @@ export function ImportDialog({ open, onOpenChange }: Props) {
               )}
             </div>
 
-            {mapping && (preview.confidence === "low" || showColumnEditor || Boolean(selectedAccountId)) && (
+            {mapping ? (
               <ColumnRoleTable preview={preview} mapping={mapping} onChange={setMapping} />
-            )}
-
-            {preview.confidence !== "low" && !selectedAccountId && (
-              <button
-                type="button"
-                className="text-xs text-primary underline-offset-4 hover:underline"
-                onClick={() => setShowColumnEditor((v) => !v)}
-              >
-                {showColumnEditor ? "Hide column mapping" : "Adjust column mapping"}
-              </button>
-            )}
+            ) : null}
 
             <label className="flex items-start gap-2 text-sm">
               <input
@@ -505,21 +493,23 @@ function ColumnRoleTable({
   return (
     <div className="space-y-1.5">
       <p className="text-sm font-medium">What is each column?</p>
+      <p className="text-xs text-muted-foreground">
+        Names in the file stay as they are. Change the dropdown if Date, Description, or
+        Amount is wrong.
+      </p>
       <div className="overflow-x-auto rounded-xl border">
         <table className="w-full text-sm">
           <thead className="bg-muted/50 text-left">
             <tr>
-              {preview.headers.map((h) => (
-                <th key={h} className="px-3 py-2 align-top font-medium">
+              {preview.headers.map((h, i) => (
+                <th key={`${i}-${h}`} className="px-3 py-2 align-top font-medium">
                   <div className="min-w-32 space-y-1.5">
-                    <div className="max-w-40 truncate text-muted-foreground" title={h}>
-                      {h}
-                    </div>
                     <select
+                      aria-label={`Role for ${h}`}
                       value={roleByHeader.get(h) ?? ""}
                       onChange={(e) => assign(h, e.target.value as keyof ColumnMapping | "")}
                       className={cn(
-                        "h-8 w-full rounded-lg border bg-transparent px-2 text-xs",
+                        "h-8 w-full rounded-lg border bg-background px-2 text-xs",
                         roleByHeader.has(h)
                           ? "border-primary text-foreground"
                           : "border-input text-muted-foreground"
@@ -531,6 +521,9 @@ function ColumnRoleTable({
                         </option>
                       ))}
                     </select>
+                    <div className="max-w-40 truncate text-xs font-normal text-muted-foreground" title={h}>
+                      {h}
+                    </div>
                   </div>
                 </th>
               ))}
