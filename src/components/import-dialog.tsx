@@ -20,6 +20,7 @@ import type { Account, AccountKind, ColumnMapping, ImportPreview } from "@/lib/t
 import { ACCOUNT_KINDS } from "@/lib/types";
 import { FileSpreadsheet, Upload } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ImportTracePanel } from "@/components/import-trace-panel";
 
 const KIND_LABEL: Record<AccountKind, string> = {
   checking: "Checking",
@@ -27,6 +28,45 @@ const KIND_LABEL: Record<AccountKind, string> = {
   savings: "Savings",
   other: "Other",
 };
+
+const PARSE_SKIP_REASONS = [
+  "unrecognized_date",
+  "empty_description",
+  "zero_amount",
+  "other_parse_error",
+] as const;
+
+type ImportOutcome = {
+  added: number;
+  skipped: number;
+  parseSkips: number;
+  trace: Record<string, unknown> | null;
+};
+
+function parseSkipTotal(trace: Record<string, unknown> | null | undefined): number {
+  const counts = trace?.skip_counts;
+  if (!counts || typeof counts !== "object") return 0;
+  const record = counts as Record<string, unknown>;
+  return PARSE_SKIP_REASONS.reduce((sum, reason) => {
+    const value = record[reason];
+    return sum + (typeof value === "number" ? value : 0);
+  }, 0);
+}
+
+function importOutcomeSummary(outcome: ImportOutcome): string {
+  const extras: string[] = [];
+  if (outcome.parseSkips) {
+    extras.push(
+      `${outcome.parseSkips} row${outcome.parseSkips === 1 ? "" : "s"} skipped while parsing`,
+    );
+  }
+  if (outcome.skipped) {
+    extras.push(`${outcome.skipped} already in the ledger`);
+  }
+  const imported = `Imported ${outcome.added} transaction${outcome.added === 1 ? "" : "s"}`;
+  if (extras.length) return `${imported} (${extras.join("; ")}).`;
+  return "Imported 0 transactions. The preview had rows, but the server skipped them.";
+}
 
 type Props = {
   open: boolean;
@@ -51,6 +91,7 @@ export function ImportDialog({ open, onOpenChange }: Props) {
   // "" = create a new account; otherwise an existing account id.
   const [selectedAccountId, setSelectedAccountId] = useState("");
   const [matchedFromFilename, setMatchedFromFilename] = useState(false);
+  const [importOutcome, setImportOutcome] = useState<ImportOutcome | null>(null);
 
   function reset() {
     setPreview(null);
@@ -65,6 +106,7 @@ export function ImportDialog({ open, onOpenChange }: Props) {
     setHeaderRow(1);
     setSelectedAccountId("");
     setMatchedFromFilename(false);
+    setImportOutcome(null);
     if (fileRef.current) fileRef.current.value = "";
   }
 
@@ -185,7 +227,22 @@ export function ImportDialog({ open, onOpenChange }: Props) {
         // so the commit-time backend parse matches what the user approved.
         delimiter: preview.delimiter,
         headerRow,
+        clientPreviewRowCount: preview.rows.length,
       });
+      const parseSkips = parseSkipTotal(result.importTrace);
+      if (result.added === 0 || parseSkips > 0) {
+        const outcome: ImportOutcome = {
+          added: result.added,
+          skipped: result.skipped,
+          parseSkips,
+          trace: result.importTrace,
+        };
+        toast.warning(
+          `${importOutcomeSummary(outcome)} Copy the import trace below if this looks wrong.`,
+        );
+        setImportOutcome(outcome);
+        return;
+      }
       toast.success(
         result.skipped
           ? `Imported ${result.added} transactions (${result.skipped} already in the ledger).`
@@ -215,9 +272,17 @@ export function ImportDialog({ open, onOpenChange }: Props) {
     >
       <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Import a statement</DialogTitle>
+          <DialogTitle>
+            {importOutcome
+              ? importOutcome.added === 0
+                ? "Nothing imported"
+                : "Some rows were skipped"
+              : "Import a statement"}
+          </DialogTitle>
           <DialogDescription>
-            CSV from a credit card or checking account. The file is stored only on this computer.
+            {importOutcome
+              ? "Copy the trace below and paste it into a chat if you want help figuring out why."
+              : "CSV from a credit card or checking account. The file is stored only on this computer."}
           </DialogDescription>
         </DialogHeader>
 
@@ -232,7 +297,19 @@ export function ImportDialog({ open, onOpenChange }: Props) {
           }}
         />
 
-        {!preview ? (
+        {importOutcome ? (
+          <div className="space-y-3">
+            <p className="text-sm">{importOutcomeSummary(importOutcome)}</p>
+            {importOutcome.trace ? (
+              <ImportTracePanel
+                trace={importOutcome.trace}
+                title="Copy this trace to debug"
+              />
+            ) : (
+              <p className="text-sm text-muted-foreground">No import trace was saved.</p>
+            )}
+          </div>
+        ) : !preview ? (
           <div
             role="button"
             tabIndex={0}
@@ -428,15 +505,33 @@ export function ImportDialog({ open, onOpenChange }: Props) {
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button
-            onClick={confirmImport}
-            disabled={!preview || !mapping || missingPieces(mapping).length > 0 || nameClash}
-          >
-            Import transactions
-          </Button>
+          {importOutcome ? (
+            <>
+              <Button variant="outline" onClick={reset}>
+                Try another file
+              </Button>
+              <Button
+                onClick={() => {
+                  reset();
+                  onOpenChange(false);
+                }}
+              >
+                Done
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="outline" onClick={() => onOpenChange(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={confirmImport}
+                disabled={!preview || !mapping || missingPieces(mapping).length > 0 || nameClash}
+              >
+                Import transactions
+              </Button>
+            </>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

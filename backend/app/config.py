@@ -11,8 +11,9 @@ DEFAULT_SQLITE_URL = f"sqlite:///{BACKEND_DIR / 'data' / 'tally.db'}"
 
 class Settings(BaseSettings):
     database_url: str = DEFAULT_SQLITE_URL
-    # Where import artifacts (raw CSV archives, the SQLite file) live. Raw CSVs
-    # are written here on commit so they survive database resets.
+    # Where import artifacts (raw CSV archives, the SQLite file, last import
+    # trace) live. Raw CSVs are written here on commit so they survive database
+    # resets. last_import_trace.json is overwritten each preview/commit.
     data_dir: str = str(BACKEND_DIR / "data")
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")

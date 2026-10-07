@@ -195,20 +195,39 @@ export const api = {
     }),
   getTransactions: () => request<ApiTransaction[]>("/transactions?limit=5000"),
   getImports: () => request<ApiImport[]>("/imports"),
-  previewImport: async (accountId: number, file: File) => {
+  previewImport: async (
+    accountId: number,
+    file: File,
+    extras: { clientPreviewRowCount?: number } = {}
+  ) => {
     const form = new FormData();
     form.append("account_id", String(accountId));
     form.append("file", file);
-    return request<{ import_id: number; skipped_duplicates: number; transactions: unknown[] }>(
-      "/imports/preview",
-      { method: "POST", body: form }
-    );
+    if (extras.clientPreviewRowCount != null) {
+      form.append("client_preview_row_count", String(extras.clientPreviewRowCount));
+    }
+    return request<{
+      import_id: number;
+      skipped_duplicates: number;
+      transactions: unknown[];
+      import_trace?: Record<string, unknown>;
+    }>("/imports/preview", { method: "POST", body: form });
   },
   commitImport: (importId: number) =>
-    request<{ committed_count: number; skipped_duplicates: number }>(
-      `/imports/${importId}/commit`,
-      { method: "POST" }
-    ),
+    request<{
+      committed_count: number;
+      skipped_duplicates: number;
+      import_trace?: Record<string, unknown>;
+    }>(`/imports/${importId}/commit`, { method: "POST" }),
+  getLastImportTrace: async () => {
+    const res = await fetch(`${API_URL}/imports/last-trace`);
+    if (res.status === 404) return null;
+    if (!res.ok) {
+      const detail = await res.text();
+      throw new Error(detail || res.statusText);
+    }
+    return res.json() as Promise<Record<string, unknown>>;
+  },
   updateTransaction: (id: number, body: { category?: string; apply_to_merchant?: boolean }) =>
     request<ApiTransaction>(`/transactions/${id}`, {
       method: "PATCH",

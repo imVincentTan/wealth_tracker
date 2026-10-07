@@ -157,7 +157,11 @@ export function TallyApp() {
           </p>
         ) : null}
         {empty ? (
-          <EmptyState onImport={() => setImportOpen(true)} onSample={onSample} />
+          <EmptyState
+            onImport={() => setImportOpen(true)}
+            onSample={onSample}
+            onDataFiles={() => setDataFilesOpen(true)}
+          />
         ) : (
           <div className="space-y-6">
             <section className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -307,7 +311,15 @@ function StatCard({
   );
 }
 
-function EmptyState({ onImport, onSample }: { onImport: () => void; onSample: () => void }) {
+function EmptyState({
+  onImport,
+  onSample,
+  onDataFiles,
+}: {
+  onImport: () => void;
+  onSample: () => void;
+  onDataFiles: () => void;
+}) {
   return (
     <div className="mx-auto max-w-2xl py-10 text-center sm:py-16">
       <p className="text-sm font-medium tracking-wide text-emerald-800 uppercase">Local only</p>
@@ -325,6 +337,10 @@ function EmptyState({ onImport, onSample }: { onImport: () => void; onSample: ()
         </Button>
         <Button size="lg" variant="outline" onClick={onSample}>
           Try a sample household
+        </Button>
+        <Button size="lg" variant="outline" onClick={onDataFiles}>
+          <FolderOpen data-icon="inline-start" />
+          Data files
         </Button>
       </div>
       <ul className="mx-auto mt-12 grid gap-4 text-left sm:grid-cols-3">

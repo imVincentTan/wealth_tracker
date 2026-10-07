@@ -2,6 +2,7 @@ import csv
 import hashlib
 import io
 import re
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Any
 
@@ -77,6 +78,46 @@ def _parse_named_month_date(value: str) -> date | None:
         return None
 
 
+MAX_SKIP_SAMPLES = 5
+SKIP_REASONS = (
+    "unrecognized_date",
+    "empty_description",
+    "zero_amount",
+    "other_parse_error",
+)
+
+
+@dataclass
+class ParseStats:
+    """Why rows were skipped during parse. Does not change which rows succeed."""
+
+    csv_headers: list[str] = field(default_factory=list)
+    delimiter: str | None = None
+    header_row: int = 1
+    file_data_row_count: int = 0
+    parsed_row_count: int = 0
+    skip_counts: dict[str, int] = field(
+        default_factory=lambda: {reason: 0 for reason in SKIP_REASONS}
+    )
+    skip_samples: list[dict[str, Any]] = field(default_factory=list)
+    parser_config: dict[str, Any] = field(default_factory=dict)
+
+    def record_skip(
+        self, reason: str, raw_date: str, raw_amount: str, *, row_number: int
+    ) -> None:
+        self.skip_counts[reason] = self.skip_counts.get(reason, 0) + 1
+        if len(self.skip_samples) >= MAX_SKIP_SAMPLES:
+            return
+        self.skip_samples.append(
+            {
+                "reason": reason,
+                "row_number": row_number,
+                "raw_date": raw_date,
+                "raw_amount": raw_amount,
+            }
+        )
+
+
 def _parse_date(value: str, fmt: str | None = None) -> date:
     value = value.strip()
     patterns = [fmt, "%Y-%m-%d", "%m/%d/%Y", "%d/%m/%Y", "%Y/%m/%d", "%m-%d-%Y"]
@@ -113,6 +154,16 @@ def _apply_type_sign(amount: float, type_value: str | None) -> float:
     if credit_like and amount < 0:
         return -amount
     return amount
+
+
+def _raw_amount_string(row: dict[str, str], config: dict[str, Any]) -> str:
+    """Date/amount samples only — do not include description/merchant columns."""
+    mode = config.get("amount_mode", "signed")
+    if mode == "debit_credit":
+        debit = row.get(config.get("debit_column", "") or "", "")
+        credit = row.get(config.get("credit_column", "") or "", "")
+        return f"debit={debit} credit={credit}"
+    return row.get(config.get("amount_column", "") or "", "")
 
 
 def _amount_from_row(row: dict[str, str], config: dict[str, Any]) -> float:
@@ -207,14 +258,15 @@ def uniquify_headers(names: list[str]) -> list[str]:
     return out
 
 
-def _read_rows(cleaned: str, delimiter: str | None) -> list[list[str]]:
+def _read_rows(cleaned: str, delimiter: str | None) -> tuple[list[list[str]], str]:
     if not delimiter:
         try:
             delimiter = csv.Sniffer().sniff(cleaned[:4096], delimiters=",;\t|").delimiter
         except csv.Error:
             delimiter = ","
     reader = csv.reader(io.StringIO(cleaned), delimiter=delimiter)
-    return [row for row in reader if any(str(cell).strip() for cell in row)]
+    rows = [row for row in reader if any(str(cell).strip() for cell in row)]
+    return rows, delimiter
 
 
 def parse_csv_rows(
@@ -223,17 +275,20 @@ def parse_csv_rows(
     account_id: int,
     currency: str = "CAD",
     filename: str = "",
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], ParseStats]:
     cleaned = content.lstrip("\ufeff")
     effective = dict(config or {})
+    stats = ParseStats()
 
-    all_rows = _read_rows(cleaned, effective.get("delimiter"))
+    all_rows, delimiter = _read_rows(cleaned, effective.get("delimiter"))
+    stats.delimiter = delimiter
     if not all_rows:
         raise ValueError("CSV has no rows")
 
     # header_row is 1-indexed; 0 means the file has no header row and columns
     # are addressed by synthesized names ("Column 1", "Column 2", ...).
     header_row = int(effective.get("header_row", 1) or 0)
+    stats.header_row = header_row
     if header_row <= 0:
         width = max(len(r) for r in all_rows)
         fieldnames = [f"Column {i + 1}" for i in range(width)]
@@ -246,8 +301,16 @@ def parse_csv_rows(
         data_rows = all_rows[header_row:]
         first_data_row_number = header_row + 1
 
+    stats.csv_headers = list(fieldnames)
+    stats.file_data_row_count = len(data_rows)
+
     if not effective.get("date_column") or not effective.get("description_column"):
         effective.update({k: v for k, v in detect_parser_config(fieldnames, filename).items() if k not in effective or not effective.get(k)})
+
+    # Record the config actually used (including sniffed delimiter) for the trace.
+    effective["delimiter"] = delimiter
+    effective["header_row"] = header_row
+    stats.parser_config = dict(effective)
 
     date_col = effective.get("date_column")
     desc_col = effective.get("description_column")
@@ -261,16 +324,26 @@ def parse_csv_rows(
         row = {h: (cells[j] if j < len(cells) else "") for j, h in enumerate(fieldnames)}
         row_number = first_data_row_number + i
         description = (row.get(desc_col) or "").strip()
+        raw_date = row.get(date_col, "") or ""
+        raw_amount = _raw_amount_string(row, effective)
         if not description:
+            stats.record_skip("empty_description", raw_date, raw_amount, row_number=row_number)
             continue
 
         try:
             txn_date = _parse_date(row.get(date_col, ""), effective.get("date_format"))
+        except (ValueError, TypeError):
+            stats.record_skip("unrecognized_date", raw_date, raw_amount, row_number=row_number)
+            continue
+
+        try:
             amount = _amount_from_row(row, effective)
         except (ValueError, TypeError):
+            stats.record_skip("other_parse_error", raw_date, raw_amount, row_number=row_number)
             continue
 
         if amount == 0:
+            stats.record_skip("zero_amount", raw_date, raw_amount, row_number=row_number)
             continue
 
         amount_cad = amount if currency.upper() == "CAD" else amount
@@ -291,7 +364,8 @@ def parse_csv_rows(
                 "dedup_hash": make_dedup_hash(account_id, txn_date, amount, description),
             }
         )
-    return results
+    stats.parsed_row_count = len(results)
+    return results, stats
 
 
 def apply_category_rules(description: str, rules: list[tuple[str, str, bool]]) -> str | None:

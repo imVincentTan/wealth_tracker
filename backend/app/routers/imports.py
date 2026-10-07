@@ -17,6 +17,7 @@ from app.models import (
 )
 from app.schemas import ImportCommitResponse, ImportPreviewResponse, ImportRead, ParsedTransactionPreview
 from app.services.csv_parser import apply_category_rules, parse_csv_rows
+from app.services.import_trace import build_import_trace, read_last_trace, write_last_trace
 from app.services.raw_files import raw_file_relpath, safe_filename, write_raw_csv
 
 router = APIRouter(prefix="/imports", tags=["imports"])
@@ -73,6 +74,15 @@ def list_imports(db: Session = Depends(get_db)):
     ]
 
 
+@router.get("/last-trace")
+def get_last_import_trace():
+    """The most recent import debug trace, overwritten each preview/commit."""
+    trace = read_last_trace()
+    if trace is None:
+        raise HTTPException(status_code=404, detail="No import trace yet")
+    return trace
+
+
 @router.get("/{import_id}/raw_csv")
 def download_raw_csv(import_id: int, db: Session = Depends(get_db)):
     import_row = db.get(Import, import_id)
@@ -95,6 +105,7 @@ def download_raw_csv(import_id: int, db: Session = Depends(get_db)):
 async def preview_import(
     account_id: int = Form(...),
     file: UploadFile = File(...),
+    client_preview_row_count: int | None = Form(None),
     db: Session = Depends(get_db),
 ):
     account = db.get(Account, account_id)
@@ -103,15 +114,26 @@ async def preview_import(
 
     content = (await file.read()).decode("utf-8-sig")
     filename = file.filename or "upload.csv"
+    parser_config = account.parser_config or {}
     try:
-        parsed = parse_csv_rows(
+        parsed, stats = parse_csv_rows(
             content,
-            account.parser_config or {},
+            parser_config,
             account.id,
             account.currency,
             filename=filename,
         )
     except ValueError as exc:
+        write_last_trace(
+            build_import_trace(
+                account_id=account.id,
+                account_name=account.name,
+                filename=filename,
+                parser_config=parser_config,
+                client_preview_row_count=client_preview_row_count,
+                preview={"status": 400, "error": str(exc)},
+            )
+        )
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     rules = _load_rules(db)
@@ -162,6 +184,23 @@ async def preview_import(
     db.commit()
     db.refresh(import_row)
 
+    trace = build_import_trace(
+        account_id=account.id,
+        account_name=account.name,
+        filename=filename,
+        parser_config=parser_config,
+        stats=stats,
+        skipped_duplicates=skipped,
+        import_id=import_row.id,
+        client_preview_row_count=client_preview_row_count,
+        preview={
+            "status": 200,
+            "parsed_row_count": len(previews),
+            "skipped_duplicates": skipped,
+        },
+    )
+    write_last_trace(trace)
+
     return ImportPreviewResponse(
         import_id=import_row.id,
         filename=import_row.filename,
@@ -169,6 +208,7 @@ async def preview_import(
         status=import_row.status,
         transactions=previews,
         skipped_duplicates=skipped,
+        import_trace=trace,
     )
 
 
@@ -205,9 +245,10 @@ def commit_import(import_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Account not found")
 
     content = import_csv_content(import_row, account)
-    parsed = parse_csv_rows(
+    parser_config = account.parser_config or {}
+    parsed, stats = parse_csv_rows(
         content,
-        account.parser_config or {},
+        parser_config,
         account.id,
         account.currency,
         filename=import_row.filename,
@@ -253,8 +294,31 @@ def commit_import(import_id: int, db: Session = Depends(get_db)):
     if raw_file is None:
         logger.warning("Import %s committed without an archived raw CSV", import_row.id)
 
+    previous = read_last_trace() or {}
+    same_session = previous.get("import_id") == import_row.id
+    trace = build_import_trace(
+        account_id=account.id,
+        account_name=account.name,
+        filename=import_row.filename,
+        parser_config=parser_config,
+        stats=stats,
+        skipped_duplicates=skipped,
+        import_id=import_row.id,
+        client_preview_row_count=(
+            previous.get("client_preview_row_count") if same_session else None
+        ),
+        preview=previous.get("preview") if same_session else None,
+        commit={
+            "status": 200,
+            "committed_count": committed,
+            "skipped_duplicates": skipped,
+        },
+    )
+    write_last_trace(trace)
+
     return ImportCommitResponse(
         import_id=import_row.id,
         committed_count=committed,
         skipped_duplicates=skipped,
+        import_trace=trace,
     )
