@@ -195,6 +195,11 @@ export const api = {
     }),
   getTransactions: () => request<ApiTransaction[]>("/transactions?limit=5000"),
   getImports: () => request<ApiImport[]>("/imports"),
+  deleteImport: (id: number) =>
+    request<{ import_id: number; filename: string; deleted_transactions: number }>(
+      `/imports/${id}`,
+      { method: "DELETE" }
+    ),
   previewImport: async (
     accountId: number,
     file: File,

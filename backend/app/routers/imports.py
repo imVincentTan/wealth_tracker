@@ -15,10 +15,16 @@ from app.models import (
     Transaction,
     TransactionType,
 )
-from app.schemas import ImportCommitResponse, ImportPreviewResponse, ImportRead, ParsedTransactionPreview
+from app.schemas import (
+    ImportCommitResponse,
+    ImportDeleteResponse,
+    ImportPreviewResponse,
+    ImportRead,
+    ParsedTransactionPreview,
+)
 from app.services.csv_parser import apply_category_rules, parse_csv_rows
 from app.services.import_trace import build_import_trace, read_last_trace, write_last_trace
-from app.services.raw_files import raw_file_relpath, safe_filename, write_raw_csv
+from app.services.raw_files import delete_raw_csv, raw_file_relpath, safe_filename, write_raw_csv
 
 router = APIRouter(prefix="/imports", tags=["imports"])
 
@@ -321,4 +327,30 @@ def commit_import(import_id: int, db: Session = Depends(get_db)):
         committed_count=committed,
         skipped_duplicates=skipped,
         import_trace=trace,
+    )
+
+
+@router.delete("/{import_id}", response_model=ImportDeleteResponse)
+def delete_import(import_id: int, db: Session = Depends(get_db)):
+    """Remove an import, its ledger rows, raw CSV rows, and archived file."""
+    import_row = db.get(Import, import_id)
+    if not import_row:
+        raise HTTPException(status_code=404, detail="Import not found")
+
+    account = db.get(Account, import_row.account_id)
+    filename = import_row.filename
+    account_name = account.name if account else None
+    deleted_transactions = (
+        db.query(Transaction).filter(Transaction.import_id == import_id).count()
+    )
+    db.delete(import_row)
+    db.commit()
+
+    if account_name:
+        delete_raw_csv(account_name, import_id, filename)
+
+    return ImportDeleteResponse(
+        import_id=import_id,
+        filename=filename,
+        deleted_transactions=deleted_transactions,
     )

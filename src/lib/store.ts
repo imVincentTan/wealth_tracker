@@ -39,6 +39,7 @@ type LedgerState = {
   loadSample: () => Promise<ImportResult>;
   setCategory: (id: string, category: CategoryId, applyToMerchant: boolean) => Promise<void>;
   deleteTransaction: (id: string) => Promise<void>;
+  deleteImport: (id: number) => Promise<{ filename: string; deleted_transactions: number }>;
   renameAccount: (id: string, name: string) => Promise<void>;
 };
 
@@ -190,6 +191,11 @@ export const useLedger = create<LedgerState>((set, get) => ({
   deleteTransaction: async (id) => {
     await api.deleteTransaction(Number(id));
     await get().refresh();
+  },
+  deleteImport: async (id) => {
+    const result = await api.deleteImport(id);
+    await get().refresh();
+    return { filename: result.filename, deleted_transactions: result.deleted_transactions };
   },
   renameAccount: async (id, name) => {
     await api.updateAccount(Number(id), { name });

@@ -95,7 +95,9 @@ class Import(Base):
 
     account: Mapped["Account"] = relationship(back_populates="imports")
     raw_rows: Mapped[list["RawImportRow"]] = relationship(back_populates="import_", cascade="all, delete-orphan")
-    transactions: Mapped[list["Transaction"]] = relationship(back_populates="import_")
+    transactions: Mapped[list["Transaction"]] = relationship(
+        back_populates="import_", cascade="all, delete-orphan"
+    )
 
 
 class RawImportRow(Base):
