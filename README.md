@@ -30,15 +30,24 @@ docker compose up --build          # Postgres + API on :8000 + UI on :43127
 
 **Hot reload lives here, not in the one-click scripts.** `start.command` / `start.bat` serve the committed UI bundle with a plain uvicorn process — no auto-restart on code changes, no UI rebuild. Use them to *try* the app; use the split setup below to *change* it. After a `git pull`, just restart the one-click script: it refreshes Python dependencies on every run, and the pulled UI bundle is already built.
 
-The split setup runs uvicorn with `--reload` (auto-restarts on Python saves) plus the Next.js dev server on **:43127** (hot-reloads UI edits in the browser). First time only: `npm install`, and create the backend venv — or just run the one-click script once, which creates `backend/.venv` for you.
+**Mac / Linux:**
 
-**Git Bash / macOS / Linux:**
+```bash
+make setup    # first time, and after a pull if deps changed
+make run
+```
+
+`make setup` creates `backend/.venv`, installs Python + npm packages, and makes `backend/data`. `make run` (alias: `make dev`) starts uvicorn from `backend/` with `--reload` on **:8000** — same recipe as `npm run api`, so the reloader watches only `backend/` (not `node_modules` / `.next`, and not a compose `.env` in the repo root) — and the Next.js dev server on **:43127**. Work at http://127.0.0.1:43127. Ctrl+C stops both. If the venv is missing, `make run` runs setup for you.
+
+Needs Python 3.10+ and Node.
+
+To run the two sides yourself instead:
 
 ```bash
 # terminal 1 — API on :8000, auto-restarts on save
 cd backend
-source .venv/Scripts/activate        # macOS/Linux: source .venv/bin/activate
-uvicorn app.main:app --reload --port 8000
+source .venv/bin/activate
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 
 # terminal 2 — UI dev server on :43127
 NEXT_PUBLIC_API_URL=http://127.0.0.1:8000 npm run dev
@@ -56,16 +65,18 @@ uvicorn app.main:app --reload --port 8000
 $env:NEXT_PUBLIC_API_URL="http://127.0.0.1:8000"; npm run dev
 ```
 
-If PowerShell blocks activation ("running scripts is disabled"), allow it once with `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser` — or skip activation and call the venv directly from the repo root:
+If PowerShell blocks activation ("running scripts is disabled"), allow it once with `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser` — or skip activation and call the venv from `backend/` (uvicorn's reloader always watches cwd):
 
 ```powershell
-.\backend\.venv\Scripts\uvicorn.exe app.main:app --app-dir backend --reload --port 8000
+cd backend
+.\.venv\Scripts\uvicorn.exe app.main:app --reload --port 8000
 ```
 
 **Windows cmd.exe:**
 
 ```cmd
-backend\.venv\Scripts\activate
+cd backend
+.venv\Scripts\activate
 uvicorn app.main:app --reload --port 8000
 ```
 
