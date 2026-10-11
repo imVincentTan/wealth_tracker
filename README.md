@@ -37,7 +37,7 @@ make setup    # first time, and after a pull if deps changed
 make run
 ```
 
-`make setup` creates `backend/.venv`, installs Python + npm packages, and makes `backend/data`. `make run` starts uvicorn with `--reload` on **:8000** and the Next.js dev server on **:43127**. Work at http://127.0.0.1:43127. Ctrl+C stops both. If the venv is missing, `make run` runs setup for you.
+`make setup` creates `backend/.venv`, installs Python + npm packages, and makes `backend/data`. `make run` (alias: `make dev`) starts uvicorn from `backend/` with `--reload` on **:8000** — same recipe as `npm run api`, so the reloader watches only `backend/` (not `node_modules` / `.next`, and not a compose `.env` in the repo root) — and the Next.js dev server on **:43127**. Work at http://127.0.0.1:43127. Ctrl+C stops both. If the venv is missing, `make run` runs setup for you.
 
 Needs Python 3.10+ and Node.
 
@@ -65,16 +65,18 @@ uvicorn app.main:app --reload --port 8000
 $env:NEXT_PUBLIC_API_URL="http://127.0.0.1:8000"; npm run dev
 ```
 
-If PowerShell blocks activation ("running scripts is disabled"), allow it once with `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser` — or skip activation and call the venv directly from the repo root:
+If PowerShell blocks activation ("running scripts is disabled"), allow it once with `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser` — or skip activation and call the venv from `backend/` (uvicorn's reloader always watches cwd):
 
 ```powershell
-.\backend\.venv\Scripts\uvicorn.exe app.main:app --app-dir backend --reload --port 8000
+cd backend
+.\.venv\Scripts\uvicorn.exe app.main:app --reload --port 8000
 ```
 
 **Windows cmd.exe:**
 
 ```cmd
-backend\.venv\Scripts\activate
+cd backend
+.venv\Scripts\activate
 uvicorn app.main:app --reload --port 8000
 ```
 
