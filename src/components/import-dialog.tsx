@@ -71,9 +71,10 @@ function importOutcomeSummary(outcome: ImportOutcome): string {
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  lockToAccount?: Account | null;
 };
 
-export function ImportDialog({ open, onOpenChange }: Props) {
+export function ImportDialog({ open, onOpenChange, lockToAccount = null }: Props) {
   const importFile = useLedger((s) => s.importFile);
   const accounts = useLedger((s) => s.accounts);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -97,14 +98,14 @@ export function ImportDialog({ open, onOpenChange }: Props) {
     setPreview(null);
     setError(null);
     setFile(null);
-    setName("");
-    setKind("checking");
+    setName(lockToAccount?.name ?? "");
+    setKind(lockToAccount?.kind ?? "checking");
     setInvert(false);
     setMapping(null);
     setFileText("");
     setDelimiter("");
     setHeaderRow(1);
-    setSelectedAccountId("");
+    setSelectedAccountId(lockToAccount?.id ?? "");
     setMatchedFromFilename(false);
     setImportOutcome(null);
     if (fileRef.current) fileRef.current.value = "";
@@ -138,6 +139,11 @@ export function ImportDialog({ open, onOpenChange }: Props) {
     }
     setFile(file);
     setFileText(text);
+    if (lockToAccount) {
+      applyExistingAccount(lockToAccount, text, file.name);
+      setMatchedFromFilename(false);
+      return;
+    }
     const match = accounts.find((a) => a.name.toLowerCase() === next.suggestedName.toLowerCase());
     if (match) {
       applyExistingAccount(match, text, file.name);
@@ -208,9 +214,11 @@ export function ImportDialog({ open, onOpenChange }: Props) {
       setError("Map at least Date, Description, and Amount (or Debit/Credit) before importing.");
       return;
     }
-    const importName = name.trim() || preview.suggestedName;
-    if (!selectedAccountId) {
-      const clash = accounts.find((a) => a.name.toLowerCase() === importName.toLowerCase());
+    const boundName = (lockToAccount?.name ?? name).trim() || preview.suggestedName;
+    const boundKind = lockToAccount?.kind ?? kind;
+    const boundId = lockToAccount?.id ?? selectedAccountId;
+    if (!boundId) {
+      const clash = accounts.find((a) => a.name.toLowerCase() === boundName.toLowerCase());
       if (clash) {
         setError(`An account named “${clash.name}” already exists. Pick it from the Account list.`);
         return;
@@ -219,8 +227,8 @@ export function ImportDialog({ open, onOpenChange }: Props) {
     try {
       const result = await importFile({
         file,
-        name: name.trim() || preview.suggestedName,
-        kind,
+        name: boundName,
+        kind: boundKind,
         mapping,
         invertAmounts: invert,
         // Always the resolved delimiter from the preview (never "" / re-sniff),
@@ -255,9 +263,10 @@ export function ImportDialog({ open, onOpenChange }: Props) {
     }
   }
 
-  const importName = name.trim() || preview?.suggestedName || "";
+  const importName = (lockToAccount?.name ?? name).trim() || preview?.suggestedName || "";
   const nameClash =
     Boolean(preview) &&
+    !lockToAccount &&
     !selectedAccountId &&
     Boolean(importName) &&
     accounts.some((a) => a.name.toLowerCase() === importName.toLowerCase());
@@ -411,29 +420,37 @@ export function ImportDialog({ open, onOpenChange }: Props) {
 
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5 sm:col-span-2">
-                <Label htmlFor="account-pick">Account</Label>
-                <select
-                  id="account-pick"
-                  value={selectedAccountId}
-                  onChange={(e) => onAccountPick(e.target.value)}
-                  className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm"
-                >
-                  <option value="">New account…</option>
-                  {accounts.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-xs text-muted-foreground">
-                  One name per card or bank account (e.g. TD credit card). Drop each new
-                  statement into the same name so last month&apos;s column mapping fills in.
-                </p>
-                {matchedFromFilename ? (
-                  <p className="text-xs text-muted-foreground">
-                    Matched existing account from filename.
+                {lockToAccount ? (
+                  <p className="text-sm">
+                    Importing into <span className="font-medium">{lockToAccount.name}</span>.
                   </p>
-                ) : null}
+                ) : (
+                  <>
+                    <Label htmlFor="account-pick">Account</Label>
+                    <select
+                      id="account-pick"
+                      value={selectedAccountId}
+                      onChange={(e) => onAccountPick(e.target.value)}
+                      className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm"
+                    >
+                      <option value="">New account…</option>
+                      {accounts.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.name}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-muted-foreground">
+                      One name per card or bank account (e.g. TD credit card). Drop each new
+                      statement into the same name so last month&apos;s column mapping fills in.
+                    </p>
+                    {matchedFromFilename ? (
+                      <p className="text-xs text-muted-foreground">
+                        Matched existing account from filename.
+                      </p>
+                    ) : null}
+                  </>
+                )}
               </div>
               {selectedAccountId ? (
                 <p className="text-sm text-muted-foreground sm:col-span-2">
@@ -545,7 +562,7 @@ const COLUMN_ROLES: { value: keyof ColumnMapping | ""; label: string }[] = [
   { value: "amount", label: "Amount (signed)" },
   { value: "debit", label: "Debit / money out" },
   { value: "credit", label: "Credit / money in" },
-  { value: "balance", label: "Balance (ignored)" },
+  { value: "balance", label: "Balance (net worth)" },
   { value: "category", label: "Bank category" },
   { value: "type", label: "Type marker" },
 ];

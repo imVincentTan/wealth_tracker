@@ -6,7 +6,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.database import Base, engine, SessionLocal
-from app.routers import accounts, categories, dashboard, imports, transactions
+from app.routers import accounts, categories, dashboard, imports, portfolio, transactions
 from app.services.seed import seed_default_categories
 
 app = FastAPI(title="Wealth Tracker", version="0.1.0")
@@ -26,7 +26,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-for router in (accounts.router, categories.router, imports.router, transactions.router, dashboard.router):
+for router in (
+    accounts.router,
+    categories.router,
+    imports.router,
+    transactions.router,
+    dashboard.router,
+    portfolio.router,
+):
     app.include_router(router, prefix="/api")
 
 

@@ -5,6 +5,7 @@ from app.database import get_db
 from app.models import Account
 from app.parsers.defaults import get_default_parser_config
 from app.schemas import AccountCreate, AccountRead, AccountUpdate
+from app.services.portfolio import ensure_portfolio_for_spending
 from app.services.raw_files import move_archive_dir
 
 router = APIRouter(prefix="/accounts", tags=["accounts"])
@@ -28,6 +29,8 @@ def create_account(payload: AccountCreate, db: Session = Depends(get_db)):
         parser_config=parser_config,
     )
     db.add(account)
+    db.flush()
+    ensure_portfolio_for_spending(db, account)
     db.commit()
     db.refresh(account)
     return account
@@ -51,6 +54,8 @@ def update_account(account_id: int, payload: AccountUpdate, db: Session = Depend
         account.name = payload.name
     if payload.parser_config is not None:
         account.parser_config = payload.parser_config
+    db.flush()
+    ensure_portfolio_for_spending(db, account)
     db.commit()
     db.refresh(account)
     # Keep the on-disk raw-CSV archive aligned with the new name (no-op when

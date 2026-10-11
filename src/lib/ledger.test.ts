@@ -4,6 +4,7 @@ import { categorize, extractMerchant } from "./categorize";
 import { parseMoney } from "./money";
 import { accountIdFromName, parseCsvText, parseDate, rowsToTransactions } from "./parse-csv";
 import { buildReport } from "./reports";
+import { sumPortfolio } from "./portfolio";
 import { CHASE_CHECKING_CSV, CHASE_CREDIT_CSV } from "./sample";
 import { mappingFromParserConfig, overlayMapping, parserConfigFromMapping } from "./api";
 
@@ -66,6 +67,7 @@ describe("Chase credit CSV", () => {
       mapping: preview.mapping,
       invertAmounts: preview.invertAmounts,
     });
+    assert.equal(preview.mapping.balance, "Balance");
     const grocery = txns.find((t) => t.description.includes("WHOLE FOODS"));
     assert.ok(grocery);
     assert.ok((grocery!.amount as number) < 0);
@@ -331,5 +333,19 @@ describe("saved parser_config overlay", () => {
     assert.equal(next.amount, "Amount");
     assert.equal(next.debit, null);
     assert.equal(next.credit, null);
+  });
+});
+
+describe("net worth totals", () => {
+  it("subtracts debts from assets", () => {
+    const totals = sumPortfolio([
+      { side: "asset", current_value: 800000 },
+      { side: "asset", current_value: 750 },
+      { side: "debt", current_value: 500000 },
+      { side: "debt", current_value: 200 },
+    ]);
+    assert.equal(totals.assets, 800750);
+    assert.equal(totals.debts, 500200);
+    assert.equal(totals.net, 300550);
   });
 });

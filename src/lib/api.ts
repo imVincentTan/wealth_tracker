@@ -1,4 +1,11 @@
-import type { AccountKind, CategoryId, ColumnMapping } from "./types";
+import type {
+  AccountKind,
+  CategoryId,
+  ColumnMapping,
+  PortfolioAccount,
+  PortfolioKind,
+  PortfolioSummary,
+} from "./types";
 
 // Same-origin by default (single-server bundle: FastAPI serves UI + /api).
 // Set NEXT_PUBLIC_API_URL to the API origin only for the split dev setup
@@ -248,4 +255,55 @@ export const api = {
   deleteTransaction: (id: number) =>
     request<void>(`/transactions/${id}`, { method: "DELETE" }),
   health: () => request<{ status: string }>("/health"),
+  getPortfolio: () => request<PortfolioSummary>("/portfolio"),
+  createPortfolio: (body: {
+    name: string;
+    kind: PortfolioKind;
+    institution?: string;
+    purchase_date?: string;
+    purchase_price?: number;
+    linked_property_id?: number;
+    balance?: number;
+  }) =>
+    request<PortfolioAccount>("/portfolio", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  updatePortfolio: (
+    id: number,
+    body: {
+      name?: string;
+      purchase_date?: string;
+      purchase_price?: number;
+      linked_property_id?: number | null;
+      balance?: number;
+      balance_as_of?: string;
+    }
+  ) =>
+    request<PortfolioAccount>(`/portfolio/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  addHolding: (id: number, body: { name: string; quantity: number; price_cad: number }) =>
+    request<PortfolioAccount>(`/portfolio/${id}/holdings`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  updateHolding: (
+    id: number,
+    holdingId: number,
+    body: { name: string; quantity: number; price_cad: number }
+  ) =>
+    request<PortfolioAccount>(`/portfolio/${id}/holdings/${holdingId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  deleteHolding: (id: number, holdingId: number) =>
+    request<PortfolioAccount>(`/portfolio/${id}/holdings/${holdingId}`, {
+      method: "DELETE",
+    }),
 };

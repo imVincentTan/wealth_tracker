@@ -11,7 +11,16 @@ import {
   type ApiTransaction,
 } from "./api";
 import { CHASE_CHECKING_CSV, CHASE_CREDIT_CSV } from "./sample";
-import type { Account, AccountKind, CategoryId, ColumnMapping, Transaction } from "./types";
+import type {
+  Account,
+  AccountKind,
+  CategoryId,
+  ColumnMapping,
+  PortfolioAccount,
+  PortfolioKind,
+  PortfolioSummary,
+  Transaction,
+} from "./types";
 
 type ImportResult = {
   added: number;
@@ -25,7 +34,37 @@ type LedgerState = {
   error: string | null;
   transactions: Transaction[];
   accounts: Account[];
+  portfolio: PortfolioAccount[];
+  assetsTotal: number;
+  debtsTotal: number;
+  netWorth: number;
   refresh: () => Promise<void>;
+  createPortfolio: (body: {
+    name: string;
+    kind: PortfolioKind;
+    institution?: string;
+    purchase_date?: string;
+    purchase_price?: number;
+    linked_property_id?: number;
+    balance?: number;
+  }) => Promise<PortfolioAccount>;
+  updatePortfolio: (
+    id: number,
+    body: {
+      name?: string;
+      purchase_date?: string;
+      purchase_price?: number;
+      linked_property_id?: number | null;
+      balance?: number;
+    }
+  ) => Promise<void>;
+  addHolding: (id: number, body: { name: string; quantity: number; price_cad: number }) => Promise<void>;
+  updateHolding: (
+    id: number,
+    holdingId: number,
+    body: { name: string; quantity: number; price_cad: number }
+  ) => Promise<void>;
+  deleteHolding: (id: number, holdingId: number) => Promise<void>;
   importFile: (args: {
     file: File;
     name: string;
@@ -50,6 +89,18 @@ function mapAccount(account: ApiAccount): Account {
     kind: kindFromApi(account.account_type),
     parserConfig: account.parser_config ?? {},
   };
+}
+
+function applyPortfolio(
+  set: (partial: Partial<LedgerState>) => void,
+  portfolio: PortfolioSummary
+) {
+  set({
+    portfolio: portfolio.accounts,
+    assetsTotal: portfolio.assets_total,
+    debtsTotal: portfolio.debts_total,
+    netWorth: portfolio.net,
+  });
 }
 
 function mapTransaction(txn: ApiTransaction): Transaction {
@@ -95,9 +146,18 @@ export const useLedger = create<LedgerState>((set, get) => ({
   error: null,
   transactions: [],
   accounts: [],
+  portfolio: [],
+  assetsTotal: 0,
+  debtsTotal: 0,
+  netWorth: 0,
   refresh: async () => {
     try {
-      const [accounts, transactions] = await Promise.all([api.getAccounts(), api.getTransactions()]);
+      const [accounts, transactions, portfolio] = await Promise.all([
+        api.getAccounts(),
+        api.getTransactions(),
+        api.getPortfolio(),
+      ]);
+      applyPortfolio(set, portfolio);
       set({
         accounts: accounts.map(mapAccount),
         transactions: transactions.map(mapTransaction),
@@ -110,6 +170,27 @@ export const useLedger = create<LedgerState>((set, get) => ({
         error: error instanceof Error ? error.message : "Could not reach the API",
       });
     }
+  },
+  createPortfolio: async (body) => {
+    const created = await api.createPortfolio(body);
+    await get().refresh();
+    return created;
+  },
+  updatePortfolio: async (id, body) => {
+    await api.updatePortfolio(id, body);
+    await get().refresh();
+  },
+  addHolding: async (id, body) => {
+    await api.addHolding(id, body);
+    await get().refresh();
+  },
+  updateHolding: async (id, holdingId, body) => {
+    await api.updateHolding(id, holdingId, body);
+    await get().refresh();
+  },
+  deleteHolding: async (id, holdingId) => {
+    await api.deleteHolding(id, holdingId);
+    await get().refresh();
   },
   importFile: async ({
     file,
@@ -170,7 +251,7 @@ export const useLedger = create<LedgerState>((set, get) => ({
         credit: null,
         category: "Category",
         type: "Type",
-        balance: null,
+        balance: "Balance",
       },
       invertAmounts: false,
     });

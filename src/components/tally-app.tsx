@@ -7,12 +7,13 @@ import {
   FolderOpen,
   Pencil,
   Printer,
-  Upload,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { AccountsView } from "@/components/accounts-view";
 import { DataFilesDialog } from "@/components/data-files-dialog";
 import { ImportDialog } from "@/components/import-dialog";
+import { NetWorthView } from "@/components/net-worth-view";
 import { RenameAccountDialog } from "@/components/rename-account-dialog";
 import { CategoryChart } from "@/components/category-chart";
 import { TrendChart } from "@/components/trend-chart";
@@ -22,8 +23,11 @@ import { formatMoney, formatMoneySigned } from "@/lib/money";
 import { buildReport, formatRangeLabel, inRange, rangeFromPreset } from "@/lib/reports";
 import { useLedger } from "@/lib/store";
 import { useHasHydrated } from "@/lib/use-has-hydrated";
-import type { DatePreset } from "@/lib/types";
+import type { Account, DatePreset } from "@/lib/types";
 import { CATEGORY_BY_ID } from "@/lib/categorize";
+import { cn } from "@/lib/utils";
+
+type AppView = "accounts" | "spending" | "networth";
 
 const PRESETS: { id: DatePreset; label: string }[] = [
   { id: "all", label: "All time" },
@@ -40,11 +44,18 @@ export function TallyApp() {
   const accounts = useLedger((s) => s.accounts);
   const loadSample = useLedger((s) => s.loadSample);
   const error = useLedger((s) => s.error);
+  const [view, setView] = useState<AppView>("accounts");
   const [importOpen, setImportOpen] = useState(false);
+  const [importLock, setImportLock] = useState<Account | null>(null);
   const [dataFilesOpen, setDataFilesOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [preset, setPreset] = useState<DatePreset>("all");
   const [accountId, setAccountId] = useState("all");
+
+  function openImport(account?: Account) {
+    setImportLock(account ?? null);
+    setImportOpen(true);
+  }
 
   // The rename affordance needs a concrete account: the selected one, or the
   // only account when "all" is picked and just one exists.
@@ -97,9 +108,30 @@ export function TallyApp() {
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-3 px-4 py-3">
           <div className="mr-auto">
             <p className="font-heading text-2xl leading-none tracking-tight">Tally</p>
-            <p className="text-xs text-muted-foreground">Statements in Postgres</p>
+            <p className="text-xs text-muted-foreground">Local spending and net worth</p>
           </div>
-          {!empty && (
+          <nav className="flex gap-1 rounded-lg bg-muted p-0.5 text-sm">
+            {(
+              [
+                ["accounts", "Accounts"],
+                ["spending", "Spending"],
+                ["networth", "Net worth"],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setView(id)}
+                className={cn(
+                  "rounded-md px-2.5 py-1",
+                  view === id ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </nav>
+          {view === "spending" && !empty ? (
             <>
               <select
                 value={preset}
@@ -142,23 +174,23 @@ export function TallyApp() {
                 </Button>
               </div>
             </>
-          )}
-          <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
-            <Upload data-icon="inline-start" />
-            Import CSV
-          </Button>
+          ) : null}
         </div>
       </header>
 
       <main className="mx-auto max-w-6xl px-4 py-8">
-        {error && empty ? (
+        {error ? (
           <p className="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            {error} Start Postgres and the API, then refresh.
+            {error} Start the API, then refresh.
           </p>
         ) : null}
-        {empty ? (
+        {view === "accounts" ? (
+          <AccountsView onImport={openImport} onSample={onSample} />
+        ) : view === "networth" ? (
+          <NetWorthView />
+        ) : empty ? (
           <EmptyState
-            onImport={() => setImportOpen(true)}
+            onAccounts={() => setView("accounts")}
             onSample={onSample}
             onDataFiles={() => setDataFilesOpen(true)}
           />
@@ -270,7 +302,14 @@ export function TallyApp() {
         )}
       </main>
 
-      <ImportDialog open={importOpen} onOpenChange={setImportOpen} />
+      <ImportDialog
+        open={importOpen}
+        onOpenChange={(next) => {
+          setImportOpen(next);
+          if (!next) setImportLock(null);
+        }}
+        lockToAccount={importLock}
+      />
       <DataFilesDialog open={dataFilesOpen} onOpenChange={setDataFilesOpen} accounts={accounts} />
       {renameOpen && renameTarget ? (
         <RenameAccountDialog account={renameTarget} onClose={() => setRenameOpen(false)} />
@@ -312,11 +351,11 @@ function StatCard({
 }
 
 function EmptyState({
-  onImport,
+  onAccounts,
   onSample,
   onDataFiles,
 }: {
-  onImport: () => void;
+  onAccounts: () => void;
   onSample: () => void;
   onDataFiles: () => void;
 }) {
@@ -327,13 +366,12 @@ function EmptyState({
         Statements in. A spending report out.
       </h1>
       <p className="mx-auto mt-4 max-w-lg text-muted-foreground">
-        Drop CSVs from a checking account or credit card. Tally stores the original
-        rows in Postgres, categorizes them, and never needs a cloud login.
+        Add a bank or card on Accounts, then upload a CSV. Spending and Net worth
+        both read that same account.
       </p>
       <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-        <Button size="lg" onClick={onImport}>
-          <Upload data-icon="inline-start" />
-          Import a CSV
+        <Button size="lg" onClick={onAccounts}>
+          Go to Accounts
         </Button>
         <Button size="lg" variant="outline" onClick={onSample}>
           Try a sample household

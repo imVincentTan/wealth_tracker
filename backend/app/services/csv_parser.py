@@ -368,6 +368,50 @@ def parse_csv_rows(
     return results, stats
 
 
+def extract_latest_balance(content: str, config: dict[str, Any]) -> tuple[date, float] | None:
+    """Last dated Balance-column value. Independent of which rows became transactions."""
+    column = (config or {}).get("balance_column")
+    date_col = (config or {}).get("date_column")
+    if not column or not date_col:
+        return None
+
+    cleaned = content.lstrip("\ufeff")
+    all_rows, _delimiter = _read_rows(cleaned, config.get("delimiter"))
+    if not all_rows:
+        return None
+
+    header_row = int(config.get("header_row", 1) or 0)
+    if header_row <= 0:
+        width = max(len(r) for r in all_rows)
+        fieldnames = [f"Column {i + 1}" for i in range(width)]
+        data_rows = all_rows
+    else:
+        if len(all_rows) < header_row:
+            return None
+        fieldnames = uniquify_headers([str(c) for c in all_rows[header_row - 1]])
+        data_rows = all_rows[header_row:]
+
+    if column not in fieldnames or date_col not in fieldnames:
+        return None
+
+    best: tuple[date, int, float] | None = None
+    for i, cells in enumerate(data_rows):
+        row = {h: (cells[j] if j < len(cells) else "") for j, h in enumerate(fieldnames)}
+        raw_balance = (row.get(column) or "").strip()
+        if not raw_balance:
+            continue
+        try:
+            as_of = _parse_date(row.get(date_col, "") or "", config.get("date_format"))
+            amount = _to_float(raw_balance)
+        except (ValueError, TypeError):
+            continue
+        if best is None or as_of > best[0] or (as_of == best[0] and i > best[1]):
+            best = (as_of, i, round(amount, 2))
+    if best is None:
+        return None
+    return best[0], best[2]
+
+
 def apply_category_rules(description: str, rules: list[tuple[str, str, bool]]) -> str | None:
     for pattern, category_name, is_regex in rules:
         if is_regex:

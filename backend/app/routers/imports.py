@@ -12,6 +12,7 @@ from app.models import (
     Import,
     ImportStatus,
     RawImportRow,
+    SNAPSHOT_KINDS,
     Transaction,
     TransactionType,
 )
@@ -23,7 +24,8 @@ from app.schemas import (
     ImportUpdate,
     ParsedTransactionPreview,
 )
-from app.services.csv_parser import apply_category_rules, parse_csv_rows
+from app.services.csv_parser import apply_category_rules, extract_latest_balance, parse_csv_rows
+from app.services.portfolio import ensure_portfolio_for_spending, record_snapshot
 from app.services.import_trace import build_import_trace, read_last_trace, write_last_trace
 from app.services.raw_files import (
     delete_raw_csv,
@@ -307,6 +309,14 @@ def commit_import(import_id: int, db: Session = Depends(get_db)):
 
     import_row.status = ImportStatus.COMMITTED
     import_row.row_count = committed
+
+    latest = extract_latest_balance(content, parser_config)
+    if latest is not None:
+        portfolio = ensure_portfolio_for_spending(db, account)
+        if portfolio.kind in SNAPSHOT_KINDS:
+            as_of, amount = latest
+            record_snapshot(db, portfolio, amount, as_of, "import")
+
     db.commit()
 
     # Archive only after the DB commit succeeds, so a failed DB commit never

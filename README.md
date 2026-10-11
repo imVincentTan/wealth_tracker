@@ -1,6 +1,6 @@
 # Tally / Wealth Tracker
 
-Upload bank and credit-card CSVs, store the original rows, and get a spending report: totals, categories, monthly trend, merchants.
+Upload bank and credit-card CSVs, store the original rows, and get a spending report plus a net-worth snapshot: cash, investments, property, and debts.
 
 This is the [wealth_tracker](https://github.com/imVincentTan/wealth_tracker) plan with Tally’s report UI on top.
 
@@ -38,6 +38,8 @@ make run
 ```
 
 `make setup` creates `backend/.venv`, installs Python + npm packages, and makes `backend/data`. `make run` (alias: `make dev`) starts uvicorn from `backend/` with `--reload` on **:8000** — same recipe as `npm run api`, so the reloader watches only `backend/` (not `node_modules` / `.next`, and not a compose `.env` in the repo root) — and the Next.js dev server on **:43127**. Work at http://127.0.0.1:43127. Ctrl+C stops both. If the venv is missing, `make run` runs setup for you.
+
+The UI has three views: **Accounts** (add a named thing, then upload or edit it), **Spending** (transactions), and **Net worth** (today’s assets minus debts). A chequing or card CSV on Accounts feeds both reports.
 
 Needs Python 3.10+ and Node.
 

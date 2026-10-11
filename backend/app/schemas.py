@@ -3,7 +3,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from app.models import AccountType, ImportStatus, Institution, TransactionType
+from app.models import AccountType, ImportStatus, Institution, PortfolioKind, TransactionType
 
 
 class AccountCreate(BaseModel):
@@ -151,3 +151,59 @@ class DashboardResponse(BaseModel):
     by_category: list[CategoryBreakdown]
     total_income: float
     total_expenses: float
+
+
+class HoldingRead(BaseModel):
+    id: int
+    name: str
+    quantity: float
+    price_cad: float
+    value_cad: float
+
+
+class HoldingWrite(BaseModel):
+    name: str
+    quantity: float
+    price_cad: float
+
+
+class PortfolioAccountRead(BaseModel):
+    id: int
+    name: str
+    kind: PortfolioKind
+    spending_account_id: int | None
+    purchase_date: date | None
+    purchase_price: float | None
+    linked_property_id: int | None
+    linked_property_name: str | None
+    balance: float | None
+    balance_as_of: date | None
+    holdings: list[HoldingRead]
+    current_value: float
+    side: str
+
+
+class PortfolioListResponse(BaseModel):
+    accounts: list[PortfolioAccountRead]
+    assets_total: float
+    debts_total: float
+    net: float
+
+
+class PortfolioCreate(BaseModel):
+    name: str
+    kind: PortfolioKind
+    institution: Institution | None = None
+    purchase_date: date | None = None
+    purchase_price: float | None = None
+    linked_property_id: int | None = None
+    balance: float | None = None
+
+
+class PortfolioUpdate(BaseModel):
+    name: str | None = None
+    purchase_date: date | None = None
+    purchase_price: float | None = None
+    linked_property_id: int | None = None
+    balance: float | None = None
+    balance_as_of: date | None = None
