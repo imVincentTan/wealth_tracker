@@ -96,6 +96,10 @@ class ImportDeleteResponse(BaseModel):
     deleted_transactions: int
 
 
+class ImportUpdate(BaseModel):
+    filename: str
+
+
 class ImportRead(BaseModel):
     id: int
     account_id: int

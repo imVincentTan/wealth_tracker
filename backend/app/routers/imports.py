@@ -20,11 +20,18 @@ from app.schemas import (
     ImportDeleteResponse,
     ImportPreviewResponse,
     ImportRead,
+    ImportUpdate,
     ParsedTransactionPreview,
 )
 from app.services.csv_parser import apply_category_rules, parse_csv_rows
 from app.services.import_trace import build_import_trace, read_last_trace, write_last_trace
-from app.services.raw_files import delete_raw_csv, raw_file_relpath, safe_filename, write_raw_csv
+from app.services.raw_files import (
+    delete_raw_csv,
+    raw_file_relpath,
+    rename_raw_csv,
+    safe_filename,
+    write_raw_csv,
+)
 
 router = APIRouter(prefix="/imports", tags=["imports"])
 
@@ -56,28 +63,36 @@ def _typed_category(description: str, amount_type: TransactionType, rules: list[
     return category, amount_type
 
 
+def _display_filename(filename: str) -> str:
+    name = filename.replace("\\", "/").rsplit("/", 1)[-1].strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Enter a file name.")
+    return name[:255]
+
+
+def _import_read(imp: Import, account_name: str | None) -> ImportRead:
+    return ImportRead(
+        id=imp.id,
+        account_id=imp.account_id,
+        filename=imp.filename,
+        status=imp.status,
+        row_count=imp.row_count,
+        created_at=imp.imported_at,
+        # Files are archived exactly on commit, so only committed imports
+        # have one. Recomputed from the same deterministic layout.
+        raw_file=(
+            raw_file_relpath(account_name, imp.id, imp.filename)
+            if imp.status == ImportStatus.COMMITTED and account_name
+            else None
+        ),
+    )
+
+
 @router.get("", response_model=list[ImportRead])
 def list_imports(db: Session = Depends(get_db)):
     imports = db.query(Import).order_by(Import.id.desc()).all()
     account_names = {a.id: a.name for a in db.query(Account).all()}
-    return [
-        ImportRead(
-            id=imp.id,
-            account_id=imp.account_id,
-            filename=imp.filename,
-            status=imp.status,
-            row_count=imp.row_count,
-            created_at=imp.imported_at,
-            # Files are archived exactly on commit, so only committed imports
-            # have one. Recomputed from the same deterministic layout.
-            raw_file=(
-                raw_file_relpath(account_names[imp.account_id], imp.id, imp.filename)
-                if imp.status == ImportStatus.COMMITTED and imp.account_id in account_names
-                else None
-            ),
-        )
-        for imp in imports
-    ]
+    return [_import_read(imp, account_names.get(imp.account_id)) for imp in imports]
 
 
 @router.get("/last-trace")
@@ -328,6 +343,25 @@ def commit_import(import_id: int, db: Session = Depends(get_db)):
         skipped_duplicates=skipped,
         import_trace=trace,
     )
+
+
+@router.patch("/{import_id}", response_model=ImportRead)
+def update_import(import_id: int, payload: ImportUpdate, db: Session = Depends(get_db)):
+    import_row = db.get(Import, import_id)
+    if not import_row:
+        raise HTTPException(status_code=404, detail="Import not found")
+    new_name = _display_filename(payload.filename)
+    old_name = import_row.filename
+    account = db.get(Account, import_row.account_id)
+    if new_name == old_name:
+        return _import_read(import_row, account.name if account else None)
+
+    import_row.filename = new_name
+    db.commit()
+    db.refresh(import_row)
+    if account and import_row.status == ImportStatus.COMMITTED:
+        rename_raw_csv(account.name, import_row.id, old_name, new_name)
+    return _import_read(import_row, account.name if account else None)
 
 
 @router.delete("/{import_id}", response_model=ImportDeleteResponse)
