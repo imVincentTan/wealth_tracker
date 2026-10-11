@@ -78,6 +78,28 @@ def move_archive_dir(old_account_name: str, new_account_name: str) -> None:
         logger.warning("Could not move raw archive %s -> %s: %s", old_dir, new_dir, exc)
 
 
+def rename_raw_csv(
+    account_name: str, import_id: int, old_filename: str, new_filename: str
+) -> None:
+    """Rename the archived CSV if it exists. Missing files are a no-op."""
+    old_rel = raw_file_relpath(account_name, import_id, old_filename)
+    new_rel = raw_file_relpath(account_name, import_id, new_filename)
+    if old_rel == new_rel:
+        return
+    old_path = _resolve_in_archive(old_rel)
+    new_path = _resolve_in_archive(new_rel)
+    if old_path is None or new_path is None:
+        logger.warning("Refusing to rename raw CSV outside archive for import %s", import_id)
+        return
+    try:
+        if not old_path.is_file():
+            return
+        new_path.parent.mkdir(parents=True, exist_ok=True)
+        old_path.replace(new_path)
+    except OSError as exc:
+        logger.warning("Could not rename archived raw CSV for import %s: %s", import_id, exc)
+
+
 def delete_raw_csv(account_name: str, import_id: int, filename: str) -> None:
     """Remove the archived CSV if it exists. Missing files are a no-op."""
     relpath = raw_file_relpath(account_name, import_id, filename)

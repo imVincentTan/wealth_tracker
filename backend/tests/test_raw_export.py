@@ -160,6 +160,9 @@ def test_archive_survives_db_reset_and_path_shape_is_deterministic(client):
 
     # Wiping the database must leave the archive untouched.
     db_path = settings.database_url.removeprefix("sqlite:///")
+    engine.dispose()
     os.remove(db_path)
     assert archive_path.is_file()
     assert archive_path.read_text(encoding="utf-8") == CSV_CONTENT
+    # Recreate tables so later tests in this process can still write.
+    Base.metadata.create_all(bind=engine)

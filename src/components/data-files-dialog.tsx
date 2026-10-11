@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Download, Trash2 } from "lucide-react";
+import { Download, Pencil, Trash2 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { api, API_URL, type ApiImport } from "@/lib/api";
 import { useLedger } from "@/lib/store";
 import type { Account } from "@/lib/types";
@@ -40,6 +41,9 @@ export function DataFilesDialog({ open, onOpenChange, accounts }: Props) {
   const [lastTrace, setLastTrace] = useState<Record<string, unknown> | null | undefined>(undefined);
   const [pending, setPending] = useState<ApiImport | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [renaming, setRenaming] = useState<ApiImport | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [saving, setSaving] = useState(false);
 
   function handleOpenChange(next: boolean) {
     // Reset here (not in the effect) so the fresh fetch starts clean on reopen.
@@ -49,6 +53,9 @@ export function DataFilesDialog({ open, onOpenChange, accounts }: Props) {
       setLastTrace(undefined);
       setPending(null);
       setDeleting(false);
+      setRenaming(null);
+      setRenameValue("");
+      setSaving(false);
     }
     onOpenChange(next);
   }
@@ -99,7 +106,40 @@ export function DataFilesDialog({ open, onOpenChange, accounts }: Props) {
     }
   }
 
+  function startRename(imp: ApiImport) {
+    setPending(null);
+    setError(null);
+    setRenaming(imp);
+    setRenameValue(imp.filename);
+  }
+
+  async function confirmRename() {
+    if (!renaming) return;
+    const next = renameValue.trim();
+    if (!next) {
+      setError("Enter a file name.");
+      return;
+    }
+    if (next === renaming.filename) {
+      setRenaming(null);
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const updated = await api.renameImport(renaming.id, next);
+      setImports((rows) => (rows ?? []).map((row) => (row.id === updated.id ? updated : row)));
+      setRenaming(null);
+      toast.success(`Renamed to ${updated.filename}.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not rename that file.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   const accountName = new Map(accounts.map((a) => [a.id, a.name]));
+  const busy = deleting || saving;
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -109,8 +149,9 @@ export function DataFilesDialog({ open, onOpenChange, accounts }: Props) {
           <DialogDescription>
             Every import keeps its original CSV. Download it here, or find it on disk under{" "}
             <code className="rounded bg-muted px-1 py-0.5 text-xs">backend/data/raw/</code> — those
-            files survive a database reset. Delete a file to drop its ledger rows too, if a
-            statement was imported twice or came in wrong.
+            files survive a database reset. Rename a file if the bank’s name is unhelpful.
+            Delete a file to drop its ledger rows too, if a statement was imported twice or
+            came in wrong.
           </DialogDescription>
         </DialogHeader>
 
@@ -120,6 +161,33 @@ export function DataFilesDialog({ open, onOpenChange, accounts }: Props) {
           <p className="text-xs text-muted-foreground">
             No import trace yet. After you import a CSV, a copy-paste debug blob shows up here.
           </p>
+        ) : null}
+
+        {renaming ? (
+          <form
+            className="space-y-3 rounded-xl border bg-muted/30 p-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void confirmRename();
+            }}
+          >
+            <p className="text-sm font-medium">Rename {renaming.filename}</p>
+            <Input
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              autoFocus
+              disabled={saving}
+              aria-label="File name"
+            />
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => setRenaming(null)} disabled={saving}>
+                Cancel
+              </Button>
+              <Button type="submit" size="sm" disabled={saving || !renameValue.trim()}>
+                {saving ? "Saving…" : "Save name"}
+              </Button>
+            </div>
+          </form>
         ) : null}
 
         {pending ? (
@@ -167,7 +235,14 @@ export function DataFilesDialog({ open, onOpenChange, accounts }: Props) {
                 {imports.map((imp) => (
                   <tr key={imp.id} className="border-t">
                     <td className="max-w-48 truncate px-3 py-2 font-medium" title={imp.filename}>
-                      {imp.filename}
+                      <button
+                        type="button"
+                        className="max-w-full truncate text-left hover:underline"
+                        onClick={() => startRename(imp)}
+                        disabled={busy}
+                      >
+                        {imp.filename}
+                      </button>
                     </td>
                     <td className="max-w-36 truncate px-3 py-2 text-muted-foreground">
                       {accountName.get(String(imp.account_id)) ?? `Account #${imp.account_id}`}
@@ -195,10 +270,23 @@ export function DataFilesDialog({ open, onOpenChange, accounts }: Props) {
                         )}
                         <button
                           type="button"
+                          title={`Rename ${imp.filename}`}
+                          className="inline-flex text-muted-foreground hover:text-foreground"
+                          onClick={() => startRename(imp)}
+                          disabled={busy}
+                        >
+                          <Pencil className="size-4" />
+                          <span className="sr-only">Rename {imp.filename}</span>
+                        </button>
+                        <button
+                          type="button"
                           title={`Delete ${imp.filename}`}
                           className="inline-flex text-muted-foreground hover:text-destructive"
-                          onClick={() => setPending(imp)}
-                          disabled={deleting}
+                          onClick={() => {
+                            setRenaming(null);
+                            setPending(imp);
+                          }}
+                          disabled={busy}
                         >
                           <Trash2 className="size-4" />
                           <span className="sr-only">Delete {imp.filename}</span>
