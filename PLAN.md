@@ -129,10 +129,11 @@ The system stores a **parser profile** per account (institution, type, column ma
 
 ### Phase 2 — Investments (later)
 
+- [x] Net worth view (bank + CC + investments + property + loans) — today's snapshot
+- [x] Account balances from statement Balance column + typed holdings
 - [ ] NBF and Wealthsimple CSV parsers
 - [ ] Investment transaction types (deposits, withdrawals, dividends, buys/sells)
 - [ ] Account balances over time
-- [ ] Net worth view (bank + CC + investments)
 - [ ] Full holdings / cost basis (TBD — may need separate design pass)
 
 ### Phase 3 — Nice-to-haves (future)

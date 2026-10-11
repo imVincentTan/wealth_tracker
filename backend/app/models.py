@@ -131,3 +131,93 @@ class Transaction(Base):
 
     account: Mapped["Account"] = relationship(back_populates="transactions")
     import_: Mapped["Import | None"] = relationship(back_populates="transactions")
+
+
+class PortfolioKind(str, enum.Enum):
+    CHEQUING = "chequing"
+    SAVINGS = "savings"
+    CREDIT_CARD = "credit_card"
+    TFSA = "tfsa"
+    RRSP = "rrsp"
+    FHSA = "fhsa"
+    NON_REGISTERED = "non_registered"
+    PROPERTY = "property"
+    MORTGAGE = "mortgage"
+    LOAN = "loan"
+
+
+SPENDING_KINDS = {
+    PortfolioKind.CHEQUING,
+    PortfolioKind.SAVINGS,
+    PortfolioKind.CREDIT_CARD,
+}
+INVESTMENT_KINDS = {
+    PortfolioKind.TFSA,
+    PortfolioKind.RRSP,
+    PortfolioKind.FHSA,
+    PortfolioKind.NON_REGISTERED,
+}
+DEBT_KINDS = {
+    PortfolioKind.CREDIT_CARD,
+    PortfolioKind.MORTGAGE,
+    PortfolioKind.LOAN,
+}
+SNAPSHOT_KINDS = {
+    PortfolioKind.CHEQUING,
+    PortfolioKind.SAVINGS,
+    PortfolioKind.CREDIT_CARD,
+    PortfolioKind.MORTGAGE,
+    PortfolioKind.LOAN,
+}
+
+
+class PortfolioAccount(Base):
+    """One named thing on the Accounts list. Bank/card rows link to spending Account."""
+
+    __tablename__ = "portfolio_accounts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(120))
+    kind: Mapped[PortfolioKind] = mapped_column(Enum(PortfolioKind))
+    spending_account_id: Mapped[int | None] = mapped_column(
+        ForeignKey("accounts.id"), unique=True, nullable=True
+    )
+    purchase_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    purchase_price: Mapped[float | None] = mapped_column(Numeric(14, 2), nullable=True)
+    linked_property_id: Mapped[int | None] = mapped_column(
+        ForeignKey("portfolio_accounts.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    spending_account: Mapped["Account | None"] = relationship()
+    snapshots: Mapped[list["BalanceSnapshot"]] = relationship(
+        back_populates="portfolio_account", cascade="all, delete-orphan"
+    )
+    holdings: Mapped[list["Holding"]] = relationship(
+        back_populates="portfolio_account", cascade="all, delete-orphan"
+    )
+
+
+class BalanceSnapshot(Base):
+    __tablename__ = "balance_snapshots"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    portfolio_account_id: Mapped[int] = mapped_column(ForeignKey("portfolio_accounts.id"))
+    amount: Mapped[float] = mapped_column(Numeric(14, 2))
+    as_of: Mapped[date] = mapped_column(Date)
+    source: Mapped[str] = mapped_column(String(16), default="manual")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    portfolio_account: Mapped["PortfolioAccount"] = relationship(back_populates="snapshots")
+
+
+class Holding(Base):
+    __tablename__ = "holdings"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    portfolio_account_id: Mapped[int] = mapped_column(ForeignKey("portfolio_accounts.id"))
+    name: Mapped[str] = mapped_column(String(80))
+    quantity: Mapped[float] = mapped_column(Numeric(18, 8))
+    price_cad: Mapped[float] = mapped_column(Numeric(14, 4))
+
+    portfolio_account: Mapped["PortfolioAccount"] = relationship(back_populates="holdings")

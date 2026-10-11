@@ -32,8 +32,8 @@ CREDIT,06/01/2026,"ACME CORP PAYROLL",3200.00,ACH_CREDIT,-4727.21,
 DEBIT,06/01/2026,"MAPLE COURT APARTMENTS RENT",1850.00,ACH_DEBIT,-7927.21,
 `;
 
-export const CHASE_CREDIT_CSV = `Transaction Date,Post Date,Description,Category,Type,Amount,Memo
-09/13/2026,09/14/2026,WHOLE FOODS MARKET #102,Groceries,Sale,-92.40,
+export const CHASE_CREDIT_CSV = `Transaction Date,Post Date,Description,Category,Type,Amount,Memo,Balance
+09/13/2026,09/14/2026,WHOLE FOODS MARKET #102,Groceries,Sale,-92.40,,418.22
 09/12/2026,09/13/2026,STARBUCKS STORE 8841,Food & Drink,Sale,-6.45,
 09/11/2026,09/12/2026,AMAZON.COM*2K8Q3,Shopping,Sale,-38.19,
 09/10/2026,09/10/2026,Payment Thank You - Web,Payment,Payment,612.40,

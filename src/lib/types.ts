@@ -1,6 +1,51 @@
 export const ACCOUNT_KINDS = ["checking", "credit", "savings", "other"] as const;
 export type AccountKind = (typeof ACCOUNT_KINDS)[number];
 
+export const PORTFOLIO_KINDS = [
+  "chequing",
+  "savings",
+  "credit_card",
+  "tfsa",
+  "rrsp",
+  "fhsa",
+  "non_registered",
+  "property",
+  "mortgage",
+  "loan",
+] as const;
+export type PortfolioKind = (typeof PORTFOLIO_KINDS)[number];
+
+export type Holding = {
+  id: number;
+  name: string;
+  quantity: number;
+  price_cad: number;
+  value_cad: number;
+};
+
+export type PortfolioAccount = {
+  id: number;
+  name: string;
+  kind: PortfolioKind;
+  spending_account_id: number | null;
+  purchase_date: string | null;
+  purchase_price: number | null;
+  linked_property_id: number | null;
+  linked_property_name: string | null;
+  balance: number | null;
+  balance_as_of: string | null;
+  holdings: Holding[];
+  current_value: number;
+  side: "asset" | "debt";
+};
+
+export type PortfolioSummary = {
+  accounts: PortfolioAccount[];
+  assets_total: number;
+  debts_total: number;
+  net: number;
+};
+
 export const CATEGORY_IDS = [
   "groceries",
   "dining",

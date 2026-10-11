@@ -9,13 +9,13 @@ status: active
 
 # Summary
 
-Personal finance tracker. Upload CSV statements from bank and credit card accounts into Postgres; view income, expenses, categories, and cash-flow dashboards in the Next.js "Tally" report UI.
+Personal finance tracker. Upload CSV statements from bank and credit card accounts; view spending reports and a net-worth snapshot (cash, investments, property, debts) in the Next.js "Tally" UI.
 
 # Architecture
 
 - **Single-server mode (default/tester path)**: one `uvicorn` process serves everything at `http://127.0.0.1:8000` — the prebuilt static UI bundle (`backend/app/static/`, SPA fallback), the API under `/api`, and `/docs`. Storage defaults to SQLite at `backend/data/tally.db` when `DATABASE_URL` is unset.
-- **Frontend**: Next.js app at the repo root (`src/app`, `src/components`, `src/lib`). Key files: `src/lib/api.ts` (backend calls — relative `/api` same-origin by default; `NEXT_PUBLIC_API_URL` origin only for the split dev setup), `src/lib/store.ts` (zustand + import flow), `src/lib/reports.ts` (`buildReport`), `src/components/tally-app.tsx`, `import-dialog.tsx`, `transaction-table.tsx`, charts in `category-chart.tsx` + `trend-chart.tsx`.
-- **Backend**: FastAPI in `backend/app/` — `models.py` (Account, Category, CategoryRule, Import(+`raw_csv`), RawImportRow, Transaction(+`merchant`)), `routers/` (accounts, categories, imports, transactions, dashboard), `services/csv_parser.py` (`parse_csv_rows`, `extract_merchant`, `detect_parser_config`), `services/seed.py` (default categories + rules), `parsers/defaults.py` (TD/Amex/Chase).
+- **Frontend**: Next.js app at the repo root (`src/app`, `src/components`, `src/lib`). Three views: Accounts (ingest list), Spending (existing report), Net worth. Key files: `src/lib/api.ts`, `src/lib/store.ts`, `src/lib/reports.ts`, `src/components/tally-app.tsx`, `accounts-view.tsx`, `net-worth-view.tsx`, `import-dialog.tsx`.
+- **Backend**: FastAPI in `backend/app/` — `models.py` (Account, Category, CategoryRule, Import, RawImportRow, Transaction, PortfolioAccount, BalanceSnapshot, Holding), `routers/` (accounts, categories, imports, transactions, dashboard, portfolio), `services/csv_parser.py` (`parse_csv_rows`, `extract_latest_balance`), `services/portfolio.py`.
 - **DB**: SQLite by default (zero setup); Postgres 16 via `DATABASE_URL` (compose path). Tables are created via `Base.metadata.create_all` on startup — **there are no migrations**; if the schema drifts in a dev environment, recreate the database.
 - **Dev split**: `make setup` then `make run` (alias: `make dev`) — uvicorn from `backend/` with `--reload` on **8000** (same as `npm run api`, so WatchFiles does not watch the repo root) and `next dev` on **43127** (`NEXT_PUBLIC_API_URL=http://127.0.0.1:8000`). Docker compose runs db + api + web (UI on 43127).
 - After changing the UI, regenerate the committed bundle: `NEXT_PUBLIC_API_URL="" TALLY_STATIC_EXPORT=1 npm run build && rm -rf backend/app/static && cp -r out backend/app/static`. The emptied env var keeps API calls same-origin relative (Next reads `.env` at build time).
@@ -32,7 +32,8 @@ Personal finance tracker. Upload CSV statements from bank and credit card accoun
 - Store the original CSV text (`Import.raw_csv`) and every raw row as JSON (`RawImportRow.raw_data`).
 - Imports are preview-then-commit; re-importing the same statement is deduplicated via `dedup_hash`.
 - Saved accounts carry `parser_config` (institution + account type + column mapping). Each real card or bank account is one named account (e.g. "TD credit card"); later statements pick that name from the import dropdown and overlay the saved column mapping onto the new file's headers.
-- Parsers: TD chequing/savings (Withdrawals/Deposits), TD card, Amex, Chase, plus a generic Date/Description/Amount detector with column mapping. Auto-detect fills the **What is each column?** table; the table is always shown so a wrong guess is editable. A Balance column is a recognized mapping role but is never used as an amount.
+- Parsers: TD chequing/savings (Withdrawals/Deposits), TD card, Amex, Chase, plus a generic Date/Description/Amount detector with column mapping. Auto-detect fills the **What is each column?** table; the table is always shown so a wrong guess is editable. A Balance column is never used as an amount; on commit it snapshots cash/card debt for Net worth (last dated row).
+- **Accounts list is the ingest front door.** Bank/card rows upload CSVs (spending + balance). Investment rows hold qty × CAD price snapshots. Property is purchase date/price. Loans/mortgages have a balance (mortgage may link to a property). Spending and Net worth are views over those rows. No live prices, no outbound HTTP.
 - Transfers (card payments, Zelle, ATM cash) are stored but **excluded** from spending totals.
 - CAD is the reporting currency.
 - Recategorize optionally applies to the merchant (creates a `CategoryRule`). User-created rules must take precedence over seeded defaults — rules are loaded newest-first in `backend/app/routers/imports.py`; keep it that way.
@@ -58,5 +59,6 @@ Docker (Postgres): `cp .env.example .env && docker compose up --build` → UI on
 
 # Deferred (Phase 2)
 
-- Investment statements: NBF, Wealthsimple
-- Net worth including investment balances
+- Investment statements: NBF, Wealthsimple position CSVs
+- Net worth over time (snapshot history is stored; UI is today-only)
+- Property current value separate from purchase price

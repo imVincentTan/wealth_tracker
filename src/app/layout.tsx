@@ -16,9 +16,9 @@ const serif = Instrument_Serif({
 });
 
 export const metadata: Metadata = {
-  title: "Tally — local spending reports",
+  title: "Tally — local spending and net worth",
   description:
-    "Import credit card and checking CSVs and get a spending report. Everything stays in your browser.",
+    "Import statements, track holdings and property, and see spending plus net worth. Everything stays on this computer.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
