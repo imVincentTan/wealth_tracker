@@ -90,6 +90,12 @@ class ImportCommitResponse(BaseModel):
     import_trace: dict[str, Any] | None = None
 
 
+class ImportDeleteResponse(BaseModel):
+    import_id: int
+    filename: str
+    deleted_transactions: int
+
+
 class ImportRead(BaseModel):
     id: int
     account_id: int

@@ -1,9 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Download } from "lucide-react";
+import { toast } from "sonner";
+import { Download, Trash2 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import { api, API_URL, type ApiImport } from "@/lib/api";
+import { useLedger } from "@/lib/store";
 import type { Account } from "@/lib/types";
 import { ImportTracePanel } from "@/components/import-trace-panel";
 
@@ -20,10 +23,23 @@ function formatDate(value: string): string {
     : date.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
 }
 
+function deleteWarning(imp: ApiImport): string {
+  if (imp.status === "committed") {
+    const n = imp.row_count;
+    return n === 1
+      ? "This removes 1 transaction from the ledger and the original CSV. It cannot be undone."
+      : `This removes ${n} transactions from the ledger and the original CSV. It cannot be undone.`;
+  }
+  return "This import was never committed. It removes the stored CSV and preview rows. It cannot be undone.";
+}
+
 export function DataFilesDialog({ open, onOpenChange, accounts }: Props) {
+  const deleteImport = useLedger((s) => s.deleteImport);
   const [imports, setImports] = useState<ApiImport[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [lastTrace, setLastTrace] = useState<Record<string, unknown> | null | undefined>(undefined);
+  const [pending, setPending] = useState<ApiImport | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   function handleOpenChange(next: boolean) {
     // Reset here (not in the effect) so the fresh fetch starts clean on reopen.
@@ -31,6 +47,8 @@ export function DataFilesDialog({ open, onOpenChange, accounts }: Props) {
       setImports(null);
       setError(null);
       setLastTrace(undefined);
+      setPending(null);
+      setDeleting(false);
     }
     onOpenChange(next);
   }
@@ -59,6 +77,28 @@ export function DataFilesDialog({ open, onOpenChange, accounts }: Props) {
     };
   }, [open]);
 
+  async function confirmDelete() {
+    if (!pending) return;
+    setDeleting(true);
+    setError(null);
+    try {
+      const result = await deleteImport(pending.id);
+      setImports((rows) => (rows ?? []).filter((row) => row.id !== pending.id));
+      setPending(null);
+      toast.success(
+        result.deleted_transactions
+          ? `Removed ${result.filename} (${result.deleted_transactions} transaction${
+              result.deleted_transactions === 1 ? "" : "s"
+            }).`
+          : `Removed ${result.filename}.`
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not delete that import.");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   const accountName = new Map(accounts.map((a) => [a.id, a.name]));
 
   return (
@@ -69,7 +109,8 @@ export function DataFilesDialog({ open, onOpenChange, accounts }: Props) {
           <DialogDescription>
             Every import keeps its original CSV. Download it here, or find it on disk under{" "}
             <code className="rounded bg-muted px-1 py-0.5 text-xs">backend/data/raw/</code> — those
-            files survive a database reset.
+            files survive a database reset. Delete a file to drop its ledger rows too, if a
+            statement was imported twice or came in wrong.
           </DialogDescription>
         </DialogHeader>
 
@@ -79,6 +120,27 @@ export function DataFilesDialog({ open, onOpenChange, accounts }: Props) {
           <p className="text-xs text-muted-foreground">
             No import trace yet. After you import a CSV, a copy-paste debug blob shows up here.
           </p>
+        ) : null}
+
+        {pending ? (
+          <div className="space-y-3 rounded-xl border border-destructive/30 bg-destructive/5 p-3">
+            <p className="text-sm font-medium">Delete {pending.filename}?</p>
+            <p className="text-sm text-muted-foreground">{deleteWarning(pending)}</p>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => setPending(null)} disabled={deleting}>
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                onClick={() => void confirmDelete()}
+                disabled={deleting}
+              >
+                {deleting ? "Deleting…" : "Delete file"}
+              </Button>
+            </div>
+          </div>
         ) : null}
 
         {error ? (
@@ -98,7 +160,7 @@ export function DataFilesDialog({ open, onOpenChange, accounts }: Props) {
                   <th className="px-3 py-2 font-medium">Account</th>
                   <th className="px-3 py-2 font-medium">Date</th>
                   <th className="px-3 py-2 text-right font-medium">Rows</th>
-                  <th className="px-3 py-2" aria-label="Download" />
+                  <th className="px-3 py-2" aria-label="Actions" />
                 </tr>
               </thead>
               <tbody>
@@ -114,22 +176,34 @@ export function DataFilesDialog({ open, onOpenChange, accounts }: Props) {
                       {formatDate(imp.created_at)}
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums">{imp.row_count}</td>
-                    <td className="px-3 py-2 text-right">
-                      {imp.raw_file ? (
-                        <a
-                          href={`${API_URL}/imports/${imp.id}/raw_csv`}
-                          download={imp.filename}
-                          title={`Download ${imp.filename}`}
-                          className="inline-flex text-primary hover:underline"
+                    <td className="px-3 py-2">
+                      <div className="flex items-center justify-end gap-2">
+                        {imp.raw_file ? (
+                          <a
+                            href={`${API_URL}/imports/${imp.id}/raw_csv`}
+                            download={imp.filename}
+                            title={`Download ${imp.filename}`}
+                            className="inline-flex text-primary hover:underline"
+                          >
+                            <Download className="size-4" />
+                            <span className="sr-only">Download {imp.filename}</span>
+                          </a>
+                        ) : (
+                          <span className="text-xs text-muted-foreground" title="Not committed yet">
+                            —
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          title={`Delete ${imp.filename}`}
+                          className="inline-flex text-muted-foreground hover:text-destructive"
+                          onClick={() => setPending(imp)}
+                          disabled={deleting}
                         >
-                          <Download className="size-4" />
-                          <span className="sr-only">Download {imp.filename}</span>
-                        </a>
-                      ) : (
-                        <span className="text-xs text-muted-foreground" title="Not committed yet">
-                          —
-                        </span>
-                      )}
+                          <Trash2 className="size-4" />
+                          <span className="sr-only">Delete {imp.filename}</span>
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
