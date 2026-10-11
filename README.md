@@ -30,15 +30,23 @@ docker compose up --build          # Postgres + API on :8000 + UI on :43127
 
 **Hot reload lives here, not in the one-click scripts.** `start.command` / `start.bat` serve the committed UI bundle with a plain uvicorn process — no auto-restart on code changes, no UI rebuild. Use them to *try* the app; use the split setup below to *change* it. After a `git pull`, just restart the one-click script: it refreshes Python dependencies on every run, and the pulled UI bundle is already built.
 
-The split setup runs uvicorn with `--reload` (auto-restarts on Python saves) plus the Next.js dev server on **:43127** (hot-reloads UI edits in the browser). First time only: `npm install`, and create the backend venv — or just run the one-click script once, which creates `backend/.venv` for you.
+First time only: `npm install`, and create the backend venv — or just run the one-click script once, which creates `backend/.venv` for you.
 
-**Git Bash / macOS / Linux:**
+**Mac / Linux:**
+
+```bash
+make run
+```
+
+That starts uvicorn with `--reload` on **:8000** and the Next.js dev server on **:43127**. Work at http://127.0.0.1:43127. Ctrl+C stops both.
+
+To run the two sides yourself instead:
 
 ```bash
 # terminal 1 — API on :8000, auto-restarts on save
 cd backend
-source .venv/Scripts/activate        # macOS/Linux: source .venv/bin/activate
-uvicorn app.main:app --reload --port 8000
+source .venv/bin/activate
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 
 # terminal 2 — UI dev server on :43127
 NEXT_PUBLIC_API_URL=http://127.0.0.1:8000 npm run dev
